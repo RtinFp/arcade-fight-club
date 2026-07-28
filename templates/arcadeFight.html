@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./static/style.css">
+    <script type="module" src="./static/arcadeFight.js"></script>
+    <link rel="icon" type="image/x-icon" href="./static/img/favicon.png">
+    <title>Arcade Fight Club!</title>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelector(".continue").addEventListener('click', function() {
+                document.getElementById('soundEffect').play();
+            })
+        })
+    </script>
+</head>
+<body>
+    <audio id="song" autoplay loop>
+        <source src="./static/sfx/gameplay.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="soundEffect">
+        <source src="./static/sfx/hover.wav">
+    </audio>
+    <section>
+        <!-- Players health and combo bar -->
+        <div id="health">
+            <div id="player_one_health_container">
+                <div id="player_one_health"></div>
+                <div id="player_one_health_bar"></div>
+                <h1 id="title" class="narrator_title">{{ player_one_html }}</h1>
+            </div>
+            <div id="player_two_health_container">
+                <div id="player_two_health"></div>
+                <div id="player_two_health_bar"></div>
+                <h1 id="title" class="tyler_title">{{ player_two_html }}</h1>
+            </div>
+        </div>
+        <div id="combo">
+            <div id="player_one_combo_container">
+                <div id="player_one_combo"></div>
+                <div id="player_one_combo_bar"></div>
+                <h4 id="combo_title">Combo: S</h4>
+            </div>
+            <div id="player_two_combo_container">
+                <div id="player_two_combo"></div>
+                <div id="player_two_combo_bar"></div>
+                <h4 id="combo_title">Combo: L</h4>
+            </div>
+        </div>
+        <!-- Start -->
+        <div id="ready">
+            <h2 id="ready_title">Ready?</h2>
+            <br>
+            <button class="continue" id="fight" type="button">Fight!</button>
+            <form action="/arcadeFight" method="post">
+            <button class="continue" type="submit">Club</button>
+            </form>
+        </div>
+        <!-- Game over -->
+        <div id="log">
+            <form action="/arcadeFight" method="post" style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
+            <h2 id="log_title"></h2>
+            <br>
+            <button id="exit" class="continue" type="submit">OK</button>
+            </form>
+            <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.1/jquery.min.js"></script>
+            <script type="module">
+                // Post data to server
+                import {winnerjs, loserjs} from './static/arcadeFight.js';
+                document.addEventListener('DOMContentLoaded', function() {
+                    document.getElementById('exit').addEventListener('click', function() {
+                        const winner = winnerjs;
+                        const loser = loserjs;
+    
+                        const dict_values = {winner, loser}
+                        const s = JSON.stringify(dict_values);
+
+                        $.ajax({
+                            url:"/result",
+                            type:"POST",
+                            contentType:"application/json",
+                            data: JSON.stringify(s)
+                        });
+                    })
+                });
+            </script>
+        </div>
+        <!-- Display the game -->
+        <canvas width="1920" height="960"></canvas>
+    </section>
+</body>
+</html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./static/indexStyle.css">
+    <link rel="icon" type="image/x-icon" href="./static/img/favicon.png">
+    <title>ARCADE FIGHT CLUB!</title>
+</head>
+<body>
+    <section id="container">
+        <img src="./static/img/title.png" alt="ARCADE FIGHT-CLUB">
+        <form action="/" method="post" style="display: flex; justify-content: center; align-items: center; flex-direction: column">
+            <div id="players">
+                <div class="info" id="player_one">
+                    <h3>Player 1:</h3>
+                    <br>
+                    <input type="text" name="username1" id="username1" placeholder="Like: Narrator" autocomplete="off" required autofocus>
+                    <br>
+                    <img src="./static/img/playerOneControls.png" alt="Player One Controls" width="300" class="controls">
+                </div>
+                <div class="info" id="player_two">
+                    <h3>Player 2:</h3>
+                    <br>
+                    <input type="text" name="username2" id="username2" placeholder="Like: Tyler" autocomplete="off" required>
+                    <br>
+                    <img src="./static/img/playerTwoControls.png" alt="Player One Controls" width="300" class="controls">
+                </div>
+            </div>
+            <div id="buttons">
+                <button id="go" type="submit">GO!</button>
+            </div>
+        </form>
+        <form action="/rank" method="GET" id="fighters">
+        <button id="rank" type="submit">Rank</button>
+        </form>
+    </section>
+
+    <div id="footer">
+        <p><a href="https://github.com/RtinFp">My Github</a></p>
+        <p><a href="mailto:artinfakhrianpour@gmail.com" style="color: white;">artinfakhrianpour@gmail.com</a></p>
+        <p><a href="https://www.youtube.com/watch?v=Jv-HKv2Ndgo">Soundtrack Source</a></p>
+    </div>
+</body>
+</html>
