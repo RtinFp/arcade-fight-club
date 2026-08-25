@@ -1,46 +1,47 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./static/rank.css">
-    <link rel="icon" type="image/x-icon" href="./static/img/favicon.png">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="./static/styles/rank.css" />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles/crt.css') }}"
+    />
+    <link rel="icon" type="image/x-icon" href="./static/img/favicon.png" />
     <title>ARCADE FIGHT CLUB FIGHTERS!</title>
-</head>
-<body>
+  </head>
+  <body>
     <section id="container">
-        <img src="./static/img/title2.png" alt="FIGHT CLUB FIGHTERS">
-        
-        <div id="table_container">
-            <table>
-                <thead>
-                    <tr>
-                        <td>ID</td>
-                        <td>Name</td>
-                        <td>Wins</td>
-                        <td>Losses</td>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for fighter in fighters %}
-                        <tr>
-                            <td>{{ fighter['id'] }}</td>
-                            <td>{{ fighter['username'] }}</td>
-                            <td>{{ fighter['win'] }}</td>
-                            <td>{{ fighter['lose'] }}</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+      <img src="./static/img/title2.png" alt="FIGHT CLUB FIGHTERS" />
 
-        <form action="/rank" method="post">
+      <div id="table_container">
+        <table>
+          <thead>
+            <tr>
+              <td>ID</td>
+              <td>Name</td>
+              <td>Wins</td>
+              <td>Losses</td>
+            </tr>
+          </thead>
+          <tbody>
+            {% for fighter in fighters %}
+            <tr>
+              <td>{{ fighter['id'] }}</td>
+              <td>{{ fighter['username'] }}</td>
+              <td>{{ fighter['win'] }}</td>
+              <td>{{ fighter['lose'] }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <form action="/rank" method="post">
         <button id="back" type="submit">Club</button>
-        </form>
+      </form>
     </section>
-</body>
+  </body>
 </html>

@@ -1,49 +1,577 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./static/indexStyle.css">
-    <link rel="icon" type="image/x-icon" href="./static/img/favicon.png">
-    <title>ARCADE FIGHT CLUB!</title>
-</head>
-<body>
-    <section id="container">
-        <img src="./static/img/title.png" alt="ARCADE FIGHT-CLUB">
-        <form action="/" method="post" style="display: flex; justify-content: center; align-items: center; flex-direction: column">
-            <div id="players">
-                <div class="info" id="player_one">
-                    <h3>Player 1:</h3>
-                    <br>
-                    <input type="text" name="username1" id="username1" placeholder="Like: Narrator" autocomplete="off" required autofocus>
-                    <br>
-                    <img src="./static/img/playerOneControls.png" alt="Player One Controls" width="300" class="controls">
-                </div>
-                <div class="info" id="player_two">
-                    <h3>Player 2:</h3>
-                    <br>
-                    <input type="text" name="username2" id="username2" placeholder="Like: Tyler" autocomplete="off" required>
-                    <br>
-                    <img src="./static/img/playerTwoControls.png" alt="Player One Controls" width="300" class="controls">
-                </div>
-            </div>
-            <div id="buttons">
-                <button id="go" type="submit">GO!</button>
-            </div>
-        </form>
-        <form action="/rank" method="GET" id="fighters">
-        <button id="rank" type="submit">Rank</button>
-        </form>
-    </section>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <link rel="stylesheet" href="./static/styles/fonts.css" />
+    <link rel="stylesheet" href="./static/styles/indexStyle.css" />
+    <link rel="stylesheet" href="./static/styles/grid.css" />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles/crt.css') }}"
+    />
+    <link rel="icon" type="image/x-icon" href="./static/img/favicon.png" />
+    <title>ARCADE FIGHT-CLUB</title>
+  </head>
+  <body>
+    <div id="stars"></div>
+    <div class="bg-overlay"></div>
+    <main class="game-main">
+      <div class="top-container">
+        <div class="startails">
+          <div class="startail-r"></div>
+          <div class="startail-l"></div>
+          <div class="startail-m"></div>
+        </div>
+        <div class="lights">
+          <span class="light l1"></span>
+          <span class="light l2"></span>
+          <span class="light l3"></span>
+        </div>
+        <div class="title-container">
+          <img src="./static/img/NeonPalms.png" alt="Palm!" />
+          <h1>
+            ARCADE<br />
+            FIGHT-CLUB
+          </h1>
+        </div>
+      </div>
 
-    <div id="footer">
-        <p><a href="https://github.com/RtinFp">My Github</a></p>
-        <p><a href="mailto:artinfakhrianpour@gmail.com" style="color: white;">artinfakhrianpour@gmail.com</a></p>
-        <p><a href="https://www.youtube.com/watch?v=Jv-HKv2Ndgo">Soundtrack Source</a></p>
-    </div>
-</body>
+      <div class="bottom-container">
+        <div id="userStatus">
+          <span id="usernameDisplay"></span>
+          <button id="logoutBtn" style="display: none" title="Log Out">
+            Logout
+          </button>
+        </div>
+
+        <div id="mainMenu" class="mode-buttons">
+          <button type="button" class="mode-btn" id="bot-btn" data-mode="bot">
+            <div class="mode-icon-bot"></div>
+            <p>AI-Bot</p>
+          </button>
+          <button
+            type="button"
+            class="mode-btn"
+            id="web-btn"
+            data-mode="online"
+          >
+            <div class="mode-icon-web"></div>
+            <p>Online Co-Op</p>
+          </button>
+          <button
+            type="button"
+            class="mode-btn"
+            id="local-btn"
+            data-mode="local"
+          >
+            <div class="mode-icon-local"></div>
+            <p>Local Co-Op</p>
+          </button>
+        </div>
+
+        <!-- DYNAMIC FORM CONTAINER (hidden initially) -->
+        <div id="formContainer" style="display: none">
+          <form action="/" method="post" id="game_form" class="game-form">
+            <div id="players_container" class="players-container"></div>
+            <input type="hidden" name="mode" id="selected_mode" value="bot" />
+          </form>
+        </div>
+      </div>
+
+      <!-- GRID – untouched -->
+      <div class="grid-container">
+        <div class="grid"></div>
+      </div>
+
+      <!-- Fixed bottom-left buttons -->
+      <div class="fixed-buttons">
+        <button id="infoBtn" class="fixed-btn">i</button>
+        <button id="audioBtn" class="fixed-btn">🔊</button>
+      </div>
+
+      <!-- Modal overlay (info) -->
+      <div id="modalOverlay" class="modal-overlay" style="display: none">
+        <div class="modal-content">
+          <h2>About ARCADE FIGHT CLUB</h2>
+          <p>
+            This game was created by ArtinFp as a passion project.<br />
+            Built with Flask, Socket.IO, and pure JavaScript.<br />
+            Fight against AI, local friends, or online opponents.<br />
+            Enjoy the retro arcade vibe!
+          </p>
+          <button id="closeModalBtn" class="modal-close-btn">CLOSE</button>
+        </div>
+      </div>
+
+      <!-- Authentication Modal -->
+      <div id="authModal" class="modal-backdrop" style="display: none">
+        <div class="auth-modal">
+          <h3 id="authTitle">Login / Register</h3>
+          <input
+            type="text"
+            id="authUsername"
+            placeholder="Username"
+            autocomplete="off"
+          />
+          <input type="password" id="authPassword" placeholder="Password" />
+          <div>
+            <button id="authLoginBtn">Login</button>
+            <button id="authRegisterBtn">Register</button>
+            <button id="authCancelBtn">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Background music -->
+    <audio id="bgMusic" loop preload="auto">
+      <source src="./static/sfx/lobby.mp3" type="audio/mpeg" />
+      Your browser does not support the audio element.
+    </audio>
+
+    <script>
+      const mainMenu = document.getElementById("mainMenu");
+      const formContainer = document.getElementById("formContainer");
+      const playersContainer = document.getElementById("players_container");
+      const modeHidden = document.getElementById("selected_mode");
+      const stars = document.getElementById("stars");
+
+      let currentUser = null;
+      let pendingAuthCallback = null;
+
+      function getRandomInt(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
+
+      const render = () => {
+        stars.innerHTML = "";
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const starCount = getRandomInt(42, 100);
+        for (let i = 0; i < starCount; i++) {
+          const star = document.createElement("div");
+          star.classList.add("star");
+          const x = getRandomInt(0, w);
+          const y = getRandomInt(0, h);
+          star.style.setProperty("--x", `${x}px`);
+          star.style.setProperty("--y", `${y}px`);
+          stars.appendChild(star);
+        }
+      };
+
+      // ---------- Authentication ----------
+      async function checkCurrentUser() {
+        try {
+          const res = await fetch("/current_user");
+          const data = await res.json();
+          if (data.username) {
+            currentUser = data.username;
+            document.getElementById("usernameDisplay").innerText =
+              `Welcome, ${currentUser}`;
+            document.getElementById("logoutBtn").style.display = "inline-block";
+            return true;
+          } else {
+            currentUser = null;
+            document.getElementById("usernameDisplay").innerText =
+              "Not logged in";
+            document.getElementById("logoutBtn").style.display = "none";
+            return false;
+          }
+        } catch (e) {
+          console.error("Auth check failed", e);
+          return false;
+        }
+      }
+
+      function showAuthModal(callback) {
+        const modal = document.getElementById("authModal");
+        modal.style.display = "flex";
+        pendingAuthCallback = callback;
+        document.getElementById("authUsername").value = "";
+        document.getElementById("authPassword").value = "";
+      }
+
+      async function authUser(action) {
+        const username = document.getElementById("authUsername").value.trim();
+        const password = document.getElementById("authPassword").value.trim();
+        if (!username || !password) {
+          alert("Please enter both username and password");
+          return;
+        }
+        try {
+          const res = await fetch("/auth", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password, action }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            document.getElementById("authModal").style.display = "none";
+            await checkCurrentUser();
+            if (pendingAuthCallback) {
+              pendingAuthCallback();
+              pendingAuthCallback = null;
+            }
+          } else {
+            alert(data.message);
+          }
+        } catch (e) {
+          alert("Network error: " + e.message);
+        }
+      }
+
+      document
+        .getElementById("authLoginBtn")
+        .addEventListener("click", () => authUser("login"));
+      document
+        .getElementById("authRegisterBtn")
+        .addEventListener("click", () => authUser("register"));
+      document.getElementById("authCancelBtn").addEventListener("click", () => {
+        document.getElementById("authModal").style.display = "none";
+        pendingAuthCallback = null;
+      });
+
+      document
+        .getElementById("logoutBtn")
+        .addEventListener("click", async () => {
+          await fetch("/logout", { method: "POST" });
+          await checkCurrentUser();
+          showMainMenu();
+        });
+
+      // ---------- UI Helpers ----------
+      function showMainMenu() {
+        mainMenu.style.display = "flex";
+        formContainer.style.display = "none";
+      }
+
+      // Start bot game after auth check
+      function startBotGame() {
+        if (!currentUser) return;
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = "/";
+        const username1 = document.createElement("input");
+        username1.type = "hidden";
+        username1.name = "username1";
+        username1.value = currentUser;
+        const username2 = document.createElement("input");
+        username2.type = "hidden";
+        username2.name = "username2";
+        username2.value = "BOT";
+        const mode = document.createElement("input");
+        mode.type = "hidden";
+        mode.name = "mode";
+        mode.value = "bot";
+        form.appendChild(username1);
+        form.appendChild(username2);
+        form.appendChild(mode);
+        document.body.appendChild(form);
+        form.submit();
+      }
+
+      // Local co-op form (two separate logins)
+      function renderLocalForm() {
+        modeHidden.value = "local";
+        playersContainer.innerHTML = `
+          <div class="local-card-container">
+            <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+              <div class="player-card" id="local-card">
+                <h3>Player 1</h3>
+                <div>
+                  <div id="p1Status" class="not-ready-status">Not Ready</div>
+                  <button type="button" class="loginLocalBtn" data-player="1">Login as Player 1</button>
+                </div>
+              </div>
+              <div class="player-card" id="local-card">
+                <h3>Player 2</h3>
+                <div>
+                  <div id="p2Status" class="not-ready-status">Not Ready</div>
+                  <button type="button" class="loginLocalBtn" data-player="2">Login as Player 2</button>
+                </div>
+              </div>
+            </div>
+            <div class="btn-stack">
+              <button type="submit" id="goLocalBtn" class="action-btn go-btn" disabled>Play</button>
+              <button type="button" id="backBtn" class="action-btn back-btn">Back</button>
+            </div>
+          </div>
+        `;
+
+        let p1name = null,
+          p2name = null;
+        const goBtn = document.getElementById("goLocalBtn");
+
+        document.querySelectorAll(".loginLocalBtn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const player = btn.getAttribute("data-player");
+            showAuthModal(() => {
+              if (player === "1") {
+                p1name = currentUser;
+                const p1El = document.getElementById("p1Status");
+                p1El.innerText = `Ready as ${p1name}`;
+                p1El.classList.add("ready-status");
+              } else {
+                p2name = currentUser;
+                const p2El = document.getElementById("p2Status");
+                p2El.innerText = `Ready as ${p2name}`;
+                p2El.classList.add("ready-status");
+              }
+              if (p1name && p2name) goBtn.disabled = false;
+            });
+          });
+        });
+
+        goBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          if (!p1name || !p2name) return;
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = "/";
+          const inp1 = document.createElement("input");
+          inp1.name = "username1";
+          inp1.value = p1name;
+          const inp2 = document.createElement("input");
+          inp2.name = "username2";
+          inp2.value = p2name;
+          const mode = document.createElement("input");
+          mode.name = "mode";
+          mode.value = "local";
+          form.appendChild(inp1);
+          form.appendChild(inp2);
+          form.appendChild(mode);
+          document.body.appendChild(form);
+          form.submit();
+        });
+
+        document
+          .getElementById("backBtn")
+          .addEventListener("click", showMainMenu);
+      }
+
+      // Online panel (create / join)
+      function renderOnlinePanel() {
+        playersContainer.innerHTML = `
+          <div class="online-buttons-container">
+            <button type="button" id="createGameBigBtn" class="mode-btn online-action-btn">
+              <div class="mode-icon-web"></div>
+              <p>Create Game</p>
+            </button>
+            <button type="button" id="joinGameBigBtn" class="mode-btn online-action-btn">
+              <div class="mode-icon-web"></div>
+              <p>Join Game</p>
+            </button>
+          </div>
+          <div style="display: flex; justify-content: center; margin-top: 1rem;">
+            <button type="button" id="backBtnOnline" class="action-btn" style="background: #333; border-bottom: 4px solid #111;">Back</button>
+          </div>
+        `;
+        document
+          .getElementById("createGameBigBtn")
+          .addEventListener("click", createGameFlow);
+        document
+          .getElementById("joinGameBigBtn")
+          .addEventListener("click", joinGameFlow);
+        document
+          .getElementById("backBtnOnline")
+          .addEventListener("click", showMainMenu);
+      }
+
+      // Create game flow
+      async function createGameFlow() {
+        try {
+          const response = await fetch("/create_room", { method: "POST" });
+          const data = await response.json();
+          if (data.room_id) {
+            const backdrop = document.createElement("div");
+            backdrop.className = "modal-backdrop";
+            const modal = document.createElement("div");
+            modal.className = "roomcode-modal";
+            modal.innerHTML = `
+              <h3>Room Created!</h3>
+              <p>Share this code with your friend:</p>
+              <input type="text" id="roomCodeDisplay" value="${data.room_id}" readonly style="text-align:center; font-size:1.2rem;">
+              <button id="copyRoomCodeBtn" class="copy-btn">Copy Code</button>
+              <button id="enterGameBtn">Enter Game</button>
+            `;
+            backdrop.appendChild(modal);
+            document.body.appendChild(backdrop);
+            document
+              .getElementById("copyRoomCodeBtn")
+              .addEventListener("click", () => {
+                const codeInput = document.getElementById("roomCodeDisplay");
+                codeInput.select();
+                document.execCommand("copy");
+                alert("Room code copied!");
+              });
+            document
+              .getElementById("enterGameBtn")
+              .addEventListener("click", () => {
+                backdrop.remove();
+                window.location.href = `/arcadeFight?room=${data.room_id}&player=host`;
+              });
+          } else {
+            alert("Failed to create room. Try again.");
+          }
+        } catch (err) {
+          alert("Network error: " + err.message);
+        }
+      }
+
+      async function joinGameFlow() {
+        const backdrop = document.createElement("div");
+        backdrop.className = "modal-backdrop";
+        const modal = document.createElement("div");
+        modal.className = "roomcode-modal";
+        modal.innerHTML = `
+    <h3>Join Game</h3>
+    <input type="text" id="joinRoomCode" placeholder="Enter Room Code" autocomplete="off">
+    <button id="joinSubmitBtn">Join</button>
+    <button id="joinCancelBtn">Cancel</button>
+  `;
+        backdrop.appendChild(modal);
+        document.body.appendChild(backdrop);
+
+        const submitBtn = document.getElementById("joinSubmitBtn");
+        const cancelBtn = document.getElementById("joinCancelBtn");
+
+        const cleanup = () => backdrop.remove();
+
+        submitBtn.addEventListener("click", async () => {
+          const roomCode = document.getElementById("joinRoomCode").value.trim();
+          if (!roomCode) {
+            alert("Please enter a room code.");
+            return;
+          }
+          try {
+            const response = await fetch("/join_room", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ room_id: roomCode }),
+            });
+
+            // خواندن پاسخ به صورت متن برای بررسی
+            const text = await response.text();
+            let data;
+            try {
+              data = JSON.parse(text);
+            } catch (e) {
+              console.error("Invalid JSON from server:", text);
+              alert(
+                "Server error. Please make sure you are logged in and try again.",
+              );
+              return;
+            }
+
+            if (data.success) {
+              cleanup();
+              window.location.href = `/arcadeFight?room=${roomCode}&player=joiner`;
+            } else {
+              alert(data.message || "Invalid room or room is full.");
+            }
+          } catch (err) {
+            alert("Network error: " + err.message);
+          }
+        });
+        cancelBtn.addEventListener("click", cleanup);
+      }
+
+      // Mode selection with auth guard
+      function showFormForMode(mode) {
+        if (mode === "bot") {
+          if (!currentUser) {
+            showAuthModal(() => startBotGame());
+          } else {
+            startBotGame();
+          }
+        } else if (mode === "local") {
+          if (!currentUser) {
+            showAuthModal(() => showFormForMode("local"));
+          } else {
+            mainMenu.style.display = "none";
+            formContainer.style.display = "block";
+            renderLocalForm();
+          }
+        } else if (mode === "online") {
+          if (!currentUser) {
+            showAuthModal(() => showFormForMode("online"));
+          } else {
+            mainMenu.style.display = "none";
+            formContainer.style.display = "block";
+            renderOnlinePanel();
+          }
+        }
+      }
+
+      document.querySelectorAll("#mainMenu .mode-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const mode = btn.getAttribute("data-mode");
+          showFormForMode(mode);
+        });
+      });
+
+      // Info modal
+      const infoBtn = document.getElementById("infoBtn");
+      const modalOverlay = document.getElementById("modalOverlay");
+      const closeModalBtn = document.getElementById("closeModalBtn");
+
+      infoBtn.addEventListener("click", () => {
+        modalOverlay.style.display = "flex";
+        document.body.classList.add("modal-open");
+      });
+
+      function closeModal() {
+        modalOverlay.style.display = "none";
+        document.body.classList.remove("modal-open");
+      }
+
+      closeModalBtn.addEventListener("click", closeModal);
+      modalOverlay.addEventListener("click", (e) => {
+        if (e.target === modalOverlay) closeModal();
+      });
+
+      // Background music
+      const bgMusic = document.getElementById("bgMusic");
+      const audioBtn = document.getElementById("audioBtn");
+      let musicPlaying = true;
+
+      function playMusic() {
+        bgMusic.play().catch(() => {
+          musicPlaying = false;
+          audioBtn.innerHTML = "🔇";
+          audioBtn.classList.add("audio-off");
+        });
+      }
+      playMusic();
+
+      audioBtn.addEventListener("click", () => {
+        if (musicPlaying) {
+          bgMusic.pause();
+          musicPlaying = false;
+          audioBtn.innerHTML = "🔇";
+          audioBtn.classList.add("audio-off");
+        } else {
+          bgMusic
+            .play()
+            .then(() => {
+              musicPlaying = true;
+              audioBtn.innerHTML = "🔊";
+              audioBtn.classList.remove("audio-off");
+            })
+            .catch(() => {});
+        }
+      });
+
+      // Initialization
+      checkCurrentUser().then(() => {
+        showMainMenu();
+        render();
+      });
+    </script>
+  </body>
 </html>
