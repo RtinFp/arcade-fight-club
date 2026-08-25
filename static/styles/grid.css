@@ -1,0 +1,51 @@
+/* Variables – customize these */
+:root {
+  --grid-color: #fac4ff;    
+  /* --grid-glow: #df7373;      */
+  --grid-speed: 20s;      
+}
+
+.grid-container {
+  /* Stick to top */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  /* transform: rotateX(180deg); */
+  perspective: 14.5rem;
+  height: 45vh;
+  overflow: hidden;
+  background: transparent;
+  z-index: 0;
+  pointer-events: none;  
+  opacity: 20%;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 30%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 30%);
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  /* Grid lines: vertical & horizontal */
+  --line-width: 0.0635rem;
+  background: 
+    linear-gradient(to right, var(--grid-color) var(--line-width), transparent var(--line-width)),
+    linear-gradient(to bottom, var(--grid-color) var(--line-width), transparent var(--line-width));
+  background-size: 2rem 125rem, 125rem 2rem;
+  /* Tilt and scale for 3D effect (still works after container flip) */
+  transform: rotateX(30deg) scale(1.8) translateZ(43px);
+  /* Infinite vertical scroll */
+  animation: grid-scroll var(--grid-speed) linear infinite;
+  /* Glow effect */
+  /* filter: drop-shadow(0 0 2px var(--grid-glow));
+  border-top: 1px solid var(--grid-color); */
+}
+
+@keyframes grid-scroll {
+  from {
+    background-position-y: -30rem;
+  }
+  to {
+    background-position-y: 0%;
+  }
+}

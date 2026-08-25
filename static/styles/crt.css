@@ -1,0 +1,50 @@
+/* static/styles/crt.css - Global CRT effect with moving scanlines */
+
+/* Scanlines overlay (animated upward) */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9998;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.25) 0px,
+    rgba(0, 0, 0, 0.25) 2px,
+    transparent 2px,
+    transparent 6px
+  );
+  background-size: 100% 6px;
+  animation: scrollScanlines 1s linear infinite;
+}
+
+@keyframes scrollScanlines {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 6px;
+  }
+}
+
+/* Vignette effect */
+body::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9998;
+  background: radial-gradient(circle at center, transparent 40%, rgba(0, 0, 0, 0.75) 100%);
+  mix-blend-mode: multiply;
+}
+
+/* Slight text glow for retro feel */
+body {
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.3);
+}

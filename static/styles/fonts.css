@@ -1,0 +1,10 @@
+@font-face {
+    font-family: 'PressStart2P';
+    src: url(../fonts/PressStart2P-Regular.ttf);
+}
+
+*,
+*::before,
+*::after {
+    font-family: 'PressStart2P', monospace, sans-serif;
+}
