@@ -2,8 +2,8 @@ import {
     player_one,
     player_two,
     gameState,
-    setMatchResult,
 } from "./core.js";
+import { reportMatchResult } from "./results.js";
 import { playerActions } from "./input.js";
 import { ACTIONS, STANDARD_MAPPING } from "./inputMapping.js";
 
@@ -95,7 +95,7 @@ function endMatchFromPeerLeave(data) {
     if (log) log.style.display = "flex";
 
     if (winner && loser) {
-        setMatchResult(winner, loser);
+        reportMatchResult(winner, loser);
         if (title) {
             title.innerHTML = winner + " wins!<br><span style='font-size:0.55em'>opponent left</span>";
         }
@@ -234,9 +234,10 @@ function applyGameOverFromState(state) {
         const p1Name = window.PLAYER_ONE_NAME || narrator_title;
         const p2Name = window.PLAYER_TWO_NAME || tyler_title;
         if (state.winner === p1Name) {
-            setMatchResult(p1Name, p2Name);
+            // Host already posted the score from the sim tick.
+            reportMatchResult(p1Name, p2Name, { record: false });
         } else {
-            setMatchResult(p2Name, p1Name);
+            reportMatchResult(p2Name, p1Name, { record: false });
         }
     } else if (!state.gameOver) {
         document.querySelector("#log").style.display = "none";
@@ -483,10 +484,11 @@ export function updateOnlineHost() {
     if (state.gameOver && document.getElementById("log").style.display !== "flex") {
         document.querySelector("#log").style.display = "flex";
         document.querySelector("#log_title").innerHTML = winner + " wins!";
+        // Score is posted from the host sim loop; this only fills local UI state.
         if (winner === p1Name) {
-            setMatchResult(p1Name, p2Name);
+            reportMatchResult(p1Name, p2Name, { record: false });
         } else {
-            setMatchResult(p2Name, p1Name);
+            reportMatchResult(p2Name, p1Name, { record: false });
         }
         gameState.fight = false;
         gameState.gameOver = true;

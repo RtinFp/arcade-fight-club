@@ -1,6 +1,5 @@
 import {
     matchResult,
-    setMatchResult,
     melee_box,
     combo_box,
     background_img,
@@ -15,6 +14,7 @@ import {
     players_jump,
     TICK_MS,
 } from "./core.js";
+import { reportMatchResult } from "./results.js";
 import { initInput, playerActions, resetJumpFlag, resetActionFlags } from "./input.js";
 import { updateAI, setBotReferences } from "./bot.js";
 import {
@@ -247,9 +247,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     document.querySelector("#log").style.display = "flex";
                     document.querySelector("#log_title").innerHTML = winner + " wins!";
                     if (winner === p1Name) {
-                        setMatchResult(p1Name, p2Name);
+                        reportMatchResult(p1Name, p2Name);
                     } else {
-                        setMatchResult(p2Name, p1Name);
+                        reportMatchResult(p2Name, p1Name);
                     }
                 }
             }
