@@ -1,262 +1,448 @@
-import { 
-    player_one, player_two, background_img, city, flat,
-    players_velocity, players_jump, flat_point, gameState,
-    winnerjs, loserjs
-} from './core.js';
-import { playerActions } from './input.js';
-import { ACTIONS, STANDARD_MAPPING } from './inputMapping.js';
+import {
+    player_one,
+    player_two,
+    gameState,
+    setMatchResult,
+} from "./core.js";
+import { playerActions } from "./input.js";
+import { ACTIONS, STANDARD_MAPPING } from "./inputMapping.js";
 
 let socket = null;
-let roomId, isHost;
-let narrator_title, tyler_title;
+let roomId;
+let isHost;
+let narrator_title;
+let tyler_title;
+let connectionAlive = true;
 let lastSendTime = 0;
-const SEND_INTERVAL = 50; // ms
+let stateSeq = 0;
+let lastInputSnapshotTime = 0;
 
-// For joiner interpolation – now includes facing
-let receivedState = {
-    p1: { x: 150, y: 70, health: 100, power: 0, facing: 1, sprite: 'idle' },
-    p2: { x: 1640, y: 70, health: 100, power: 0, facing: -1, sprite: 'idle' },
-    fightActive: false,
-    gameOver: false,
-    winner: null
+const SEND_INTERVAL = 33; // ~30 Hz snapshots
+const INPUT_SNAPSHOT_INTERVAL = 100;
+const INTERP_DELAY_MS = 100;
+const MAX_SNAPSHOTS = 8;
+
+const joinerHeld = {
+    left: false,
+    right: false,
 };
-let lastTimestamp = 0;
-let lastSprites = { p1: '', p2: '' };
 
-// Helper to map action to key string (for sending)
+const snapshotBuffer = [];
+let lastSprites = { p1: "", p2: "" };
+
 function actionToKey(action) {
     for (const [code, act] of Object.entries(STANDARD_MAPPING)) {
-        if (act === action) return code.replace('Key', '').toLowerCase();
+        if (act === action) return code.replace("Key", "").toLowerCase();
     }
     return null;
 }
 
-// Helper to map key string (e.g., 'a') to action
 function keyToAction(keyStr) {
-    const code = 'Key' + keyStr.toUpperCase();
+    const code = "Key" + keyStr.toUpperCase();
     return STANDARD_MAPPING[code];
 }
 
-// Helper to get sprite name
 function getSpriteName(player) {
-    if (player.image === player.sprites.hit.image) return 'hit';
-    if (player.image === player.sprites.kick.image) return 'kick';
-    if (player.image === player.sprites.getHit.image) return 'getHit';
-    if (player.image === player.sprites.run.image) return 'run';
-    if (player.image === player.sprites.return.image) return 'return';
-    if (player.image === player.sprites.jump.image) return 'jump';
-    return 'idle';
+    if (player.image === player.sprites.hit.image) return "hit";
+    if (player.image === player.sprites.kick.image) return "kick";
+    if (player.image === player.sprites.getHit.image) return "getHit";
+    if (player.image === player.sprites.run.image) return "run";
+    if (player.image === player.sprites.return.image) return "return";
+    if (player.image === player.sprites.jump.image) return "jump";
+    return "idle";
 }
 
-export function initOnline(room, role, narrator, tyler) {
-    roomId = room;
-    isHost = (role === 'host');
-    narrator_title = narrator;
-    tyler_title = tyler;
-    socket = io();
+function applyHudNames(hostName, joinerName) {
+    if (hostName) {
+        narrator_title = hostName;
+        window.PLAYER_ONE_NAME = hostName;
+        const el = document.querySelector(".narrator_title");
+        if (el) el.innerText = hostName;
+    }
+    if (joinerName) {
+        tyler_title = joinerName;
+        window.PLAYER_TWO_NAME = joinerName;
+        const el = document.querySelector(".tyler_title");
+        if (el) el.innerText = joinerName;
+    }
+}
 
-    socket.emit('join_game', { room: roomId, player: role });
+function showDisconnectMessage(msg) {
+    gameState.fight = false;
+    gameState.gameOver = true;
+    connectionAlive = false;
+    const log = document.querySelector("#log");
+    const title = document.querySelector("#log_title");
+    if (log) log.style.display = "flex";
+    if (title) title.innerHTML = msg || "Opponent disconnected";
+}
 
-    socket.on('both_joined', () => {
-        gameState.fight = true;
-        gameState.gameOver = false;
-        document.getElementById('ready').style.display = 'none';
-        document.getElementById('song').play();
-    });
+function applyRemoteAction(actionData) {
+    if (!gameState.fight || gameState.gameOver) return;
+    const remote = playerActions.player_two;
 
-    if (isHost) {
-        // Host: listen for opponent's actions
-        socket.on('opponent_action', (actionData) => {
-            if (!gameState.fight || gameState.gameOver) return;
-            const { type, key } = actionData;
-            const action = keyToAction(key);
-            if (!action) return;
-            const remoteActions = playerActions.player_two;
-            if (type === 'down') {
-                switch (action) {
-                    case ACTIONS.LEFT: remoteActions.left = true; break;
-                    case ACTIONS.RIGHT: remoteActions.right = true; break;
-                    case ACTIONS.JUMP: remoteActions.jump = true; break;
-                    case ACTIONS.MELEE: remoteActions.melee = true; break;
-                    case ACTIONS.SPECIAL: remoteActions.special = true; break;
-                }
-            } else if (type === 'up') {
-                switch (action) {
-                    case ACTIONS.LEFT: remoteActions.left = false; break;
-                    case ACTIONS.RIGHT: remoteActions.right = false; break;
-                }
-            }
-        });
-
-        socket.on('pause_request', () => {
-            if (gameState.fight && !gameState.gameOver) {
-                gameState.fight = false;
-                document.getElementById('ready').style.display = 'flex';
-                socket.emit('pause_sync', { room: roomId, paused: true });
-            }
-        });
-    } else {
-        // Joiner: listen for full game state (now includes facing)
-        socket.on('game_state_update', (state) => {
-            receivedState = state;
-            // Update UI bars
-            document.querySelector('#player_one_health_bar').style.width = state.p1.health + '%';
-            document.querySelector('#player_two_health_bar').style.width = state.p2.health + '%';
-            document.querySelector('#player_one_combo_bar').style.width = state.p1.power + '%';
-            document.querySelector('#player_two_combo_bar').style.width = state.p2.power + '%';
-            
-            const p1Power = state.p1.power, p2Power = state.p2.power;
-            if (p1Power >= 50) document.getElementById('player_one_combo_bar').style.background = 'yellow';
-            if (p1Power >= 100) document.getElementById('player_one_combo_bar').style.background = 'rgb(0,255,0)';
-            if (p2Power >= 50) document.getElementById('player_two_combo_bar').style.background = 'yellow';
-            if (p2Power >= 100) document.getElementById('player_two_combo_bar').style.background = 'rgb(0,255,0)';
-            
-            gameState.fight = state.fightActive;
-            gameState.gameOver = state.gameOver;
-            
-            if (state.gameOver && !(document.getElementById('log').style.display === 'flex')) {
-                document.querySelector('#log').style.display = 'flex';
-                document.querySelector('#log_title').innerHTML = state.winner + ' wins!';
-                if (state.winner === narrator_title) {
-                    winnerjs = narrator_title;
-                    loserjs = tyler_title;
-                } else {
-                    winnerjs = tyler_title;
-                    loserjs = narrator_title;
-                }
-            } else if (!state.gameOver) {
-                document.querySelector('#log').style.display = 'none';
-            }
-            
-            // Update sprites and facing
-            if (state.p1.sprite !== lastSprites.p1) {
-                player_one.switch_sprite(state.p1.sprite);
-                lastSprites.p1 = state.p1.sprite;
-            }
-            if (state.p2.sprite !== lastSprites.p2) {
-                player_two.switch_sprite(state.p2.sprite);
-                lastSprites.p2 = state.p2.sprite;
-            }
-            // CRITICAL: update facing from received state
-            player_one.facing = state.p1.facing;
-            player_two.facing = state.p2.facing;
-        });
-
-        // Joiner sends its own inputs
-        window.addEventListener('keydown', (e) => {
-            const code = e.code;
-            const action = STANDARD_MAPPING[code];
-            if (!action && code !== 'Space') return;
-            e.preventDefault();
-            if (!socket || !roomId) return;
-            if (code === 'Space') {
-                socket.emit('pause_request', { room: roomId });
-                return;
-            }
-            if (!gameState.fight || gameState.gameOver) return;
-            const key = actionToKey(action);
-            if (key) {
-                socket.emit('player_action', { room: roomId, action: { type: 'down', key } });
-            }
-        });
-        
-        window.addEventListener('keyup', (e) => {
-            const code = e.code;
-            const action = STANDARD_MAPPING[code];
-            if (!action) return;
-            if (!socket || !roomId) return;
-            if (!gameState.fight || gameState.gameOver) return;
-            if (action === ACTIONS.LEFT || action === ACTIONS.RIGHT) {
-                const key = actionToKey(action);
-                if (key) {
-                    socket.emit('player_action', { room: roomId, action: { type: 'up', key } });
-                }
-            }
-        });
-        
-        socket.on('pause_sync', (data) => {
-            if (data.paused) {
-                gameState.fight = false;
-                document.getElementById('ready').style.display = 'flex';
-            } else {
-                gameState.fight = true;
-                document.getElementById('ready').style.display = 'none';
-                document.getElementById('song').play();
-            }
-        });
+    // Absolute held-key sync only — one-shots stay on keydown events.
+    if (actionData.type === "state" && actionData.state) {
+        const s = actionData.state;
+        remote.left = !!s.left;
+        remote.right = !!s.right;
+        return;
     }
 
-    window.socket = socket;
-    window.ROOM_ID = roomId;
-}
+    const action = keyToAction(actionData.key);
+    if (!action) return;
 
-// Host: send full state including facing
-export function updateOnlineHost() {
-    if (!isHost) return;
-    const now = Date.now();
-    if (now - lastSendTime >= SEND_INTERVAL) {
-        lastSendTime = now;
-        
-        let winner = null;
-        if (player_one.health <= 0) winner = tyler_title;
-        else if (player_two.health <= 0) winner = narrator_title;
-        
-        const state = {
-            p1: {
-                x: player_one.position.x,
-                y: player_one.position.y,
-                health: player_one.health,
-                power: player_one.power_c,
-                facing: player_one.facing,
-                sprite: getSpriteName(player_one)
-            },
-            p2: {
-                x: player_two.position.x,
-                y: player_two.position.y,
-                health: player_two.health,
-                power: player_two.power_c,
-                facing: player_two.facing,
-                sprite: getSpriteName(player_two)
-            },
-            fightActive: gameState.fight,
-            gameOver: (player_one.health <= 0 || player_two.health <= 0),
-            winner: winner
-        };
-        socket.emit('game_state', { room: roomId, state });
-        
-        if (state.gameOver && !(document.getElementById('log').style.display === 'flex')) {
-            document.querySelector('#log').style.display = 'flex';
-            document.querySelector('#log_title').innerHTML = winner + ' wins!';
-            if (winner === narrator_title) {
-                winnerjs = narrator_title;
-                loserjs = tyler_title;
-            } else {
-                winnerjs = tyler_title;
-                loserjs = narrator_title;
-            }
-            gameState.fight = false;
-            gameState.gameOver = true;
+    if (actionData.type === "down") {
+        switch (action) {
+            case ACTIONS.LEFT:
+                remote.left = true;
+                break;
+            case ACTIONS.RIGHT:
+                remote.right = true;
+                break;
+            case ACTIONS.JUMP:
+                remote.jump = true;
+                break;
+            case ACTIONS.MELEE:
+                remote.melee = true;
+                break;
+            case ACTIONS.SPECIAL:
+                remote.special = true;
+                break;
+        }
+    } else if (actionData.type === "up") {
+        switch (action) {
+            case ACTIONS.LEFT:
+                remote.left = false;
+                break;
+            case ACTIONS.RIGHT:
+                remote.right = false;
+                break;
         }
     }
 }
 
-// Joiner: interpolate positions and apply facing from received state
+function pushSnapshot(state) {
+    if (typeof state.seq !== "number") return;
+    if (snapshotBuffer.length && state.seq <= snapshotBuffer[snapshotBuffer.length - 1].seq) {
+        return;
+    }
+    snapshotBuffer.push(state);
+    while (snapshotBuffer.length > MAX_SNAPSHOTS) {
+        snapshotBuffer.shift();
+    }
+}
+
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
+
+function sampleBufferedState(renderTime) {
+    if (snapshotBuffer.length === 0) return null;
+    if (snapshotBuffer.length === 1) return snapshotBuffer[0];
+
+    let older = snapshotBuffer[0];
+    let newer = snapshotBuffer[snapshotBuffer.length - 1];
+
+    for (let i = 0; i < snapshotBuffer.length - 1; i++) {
+        if (snapshotBuffer[i].t <= renderTime && snapshotBuffer[i + 1].t >= renderTime) {
+            older = snapshotBuffer[i];
+            newer = snapshotBuffer[i + 1];
+            break;
+        }
+    }
+
+    if (newer.t === older.t) return newer;
+    const t = Math.max(0, Math.min(1, (renderTime - older.t) / (newer.t - older.t)));
+    return {
+        p1: {
+            x: lerp(older.p1.x, newer.p1.x, t),
+            y: lerp(older.p1.y, newer.p1.y, t),
+            health: newer.p1.health,
+            power: newer.p1.power,
+            facing: newer.p1.facing,
+            sprite: newer.p1.sprite,
+        },
+        p2: {
+            x: lerp(older.p2.x, newer.p2.x, t),
+            y: lerp(older.p2.y, newer.p2.y, t),
+            health: newer.p2.health,
+            power: newer.p2.power,
+            facing: newer.p2.facing,
+            sprite: newer.p2.sprite,
+        },
+        fightActive: newer.fightActive,
+        gameOver: newer.gameOver,
+        winner: newer.winner,
+        t: renderTime,
+        seq: newer.seq,
+    };
+}
+
+function applyUiBars(state) {
+    document.querySelector("#player_one_health_bar").style.width = state.p1.health + "%";
+    document.querySelector("#player_two_health_bar").style.width = state.p2.health + "%";
+    document.querySelector("#player_one_combo_bar").style.width = state.p1.power + "%";
+    document.querySelector("#player_two_combo_bar").style.width = state.p2.power + "%";
+
+    if (state.p1.power >= 50) document.getElementById("player_one_combo_bar").style.background = "yellow";
+    if (state.p1.power >= 100) document.getElementById("player_one_combo_bar").style.background = "rgb(0,255,0)";
+    if (state.p2.power >= 50) document.getElementById("player_two_combo_bar").style.background = "yellow";
+    if (state.p2.power >= 100) document.getElementById("player_two_combo_bar").style.background = "rgb(0,255,0)";
+}
+
+function applyGameOverFromState(state) {
+    gameState.fight = state.fightActive;
+    gameState.gameOver = state.gameOver;
+
+    if (state.gameOver && document.getElementById("log").style.display !== "flex") {
+        document.querySelector("#log").style.display = "flex";
+        document.querySelector("#log_title").innerHTML = state.winner + " wins!";
+        const p1Name = window.PLAYER_ONE_NAME || narrator_title;
+        const p2Name = window.PLAYER_TWO_NAME || tyler_title;
+        if (state.winner === p1Name) {
+            setMatchResult(p1Name, p2Name);
+        } else {
+            setMatchResult(p2Name, p1Name);
+        }
+    } else if (!state.gameOver) {
+        document.querySelector("#log").style.display = "none";
+    }
+}
+
+function applySprites(state) {
+    if (state.p1.sprite !== lastSprites.p1) {
+        player_one.switch_sprite(state.p1.sprite);
+        lastSprites.p1 = state.p1.sprite;
+    }
+    if (state.p2.sprite !== lastSprites.p2) {
+        player_two.switch_sprite(state.p2.sprite);
+        lastSprites.p2 = state.p2.sprite;
+    }
+    player_one.facing = state.p1.facing;
+    player_two.facing = state.p2.facing;
+}
+
+function emitJoinerAction(action) {
+    if (!connectionAlive || !socket || !roomId) return;
+    socket.emit("player_action", { room: roomId, action });
+}
+
+function sendInputSnapshot(force) {
+    if (isHost || !connectionAlive) return;
+    const now = Date.now();
+    if (!force && now - lastInputSnapshotTime < INPUT_SNAPSHOT_INTERVAL) return;
+    lastInputSnapshotTime = now;
+    emitJoinerAction({
+        type: "state",
+        state: {
+            left: joinerHeld.left,
+            right: joinerHeld.right,
+        },
+    });
+}
+
+export function getSocket() {
+    return socket;
+}
+
+export function getRoomId() {
+    return roomId;
+}
+
+export function isOnlineConnected() {
+    return connectionAlive && !!socket;
+}
+
+export function emitPauseSync(paused) {
+    if (!isOnlineConnected() || !roomId) return;
+    socket.emit("pause_sync", { room: roomId, paused });
+}
+
+export function emitPauseRequest() {
+    if (!isOnlineConnected() || !roomId) return;
+    socket.emit("pause_request", { room: roomId });
+}
+
+export function initOnline(room, role, narrator, tyler) {
+    roomId = room;
+    isHost = role === "host";
+    narrator_title = narrator;
+    tyler_title = tyler;
+    connectionAlive = true;
+    snapshotBuffer.length = 0;
+    stateSeq = 0;
+
+    socket = io({ withCredentials: true });
+
+    socket.on("connect_error", () => {
+        showDisconnectMessage("Could not connect");
+    });
+
+    socket.on("join_error", (data) => {
+        showDisconnectMessage((data && data.message) || "Join failed");
+    });
+
+    socket.emit("join_game", { room: roomId, player: role });
+
+    socket.on("both_joined", (data) => {
+        if (data) {
+            applyHudNames(data.host, data.joiner);
+        }
+        gameState.fight = true;
+        gameState.gameOver = false;
+        document.getElementById("ready").style.display = "none";
+        document.getElementById("song").play();
+    });
+
+    socket.on("opponent_disconnected", () => {
+        showDisconnectMessage("Opponent disconnected");
+    });
+
+    if (isHost) {
+        socket.on("opponent_action", (actionData) => {
+            applyRemoteAction(actionData);
+        });
+
+        socket.on("pause_request", () => {
+            if (gameState.fight && !gameState.gameOver) {
+                gameState.fight = false;
+                document.getElementById("ready").style.display = "flex";
+                emitPauseSync(true);
+            }
+        });
+    } else {
+        socket.on("game_state_update", (state) => {
+            pushSnapshot(state);
+            applyUiBars(state);
+            applyGameOverFromState(state);
+            applySprites(state);
+        });
+
+        window.addEventListener("keydown", (e) => {
+            const code = e.code;
+            const action = STANDARD_MAPPING[code];
+            if (!action) return;
+            e.preventDefault();
+            if (!connectionAlive) return;
+            if (!gameState.fight || gameState.gameOver) return;
+
+            if (action === ACTIONS.LEFT) joinerHeld.left = true;
+            if (action === ACTIONS.RIGHT) joinerHeld.right = true;
+
+            const key = actionToKey(action);
+            if (key) {
+                emitJoinerAction({ type: "down", key });
+            }
+            if (action === ACTIONS.LEFT || action === ACTIONS.RIGHT) {
+                sendInputSnapshot(true);
+            }
+        });
+
+        window.addEventListener("keyup", (e) => {
+            const code = e.code;
+            const action = STANDARD_MAPPING[code];
+            if (!action || !connectionAlive) return;
+            if (!gameState.fight || gameState.gameOver) return;
+
+            if (action === ACTIONS.LEFT) joinerHeld.left = false;
+            if (action === ACTIONS.RIGHT) joinerHeld.right = false;
+
+            if (action === ACTIONS.LEFT || action === ACTIONS.RIGHT) {
+                const key = actionToKey(action);
+                if (key) emitJoinerAction({ type: "up", key });
+                sendInputSnapshot(true);
+            }
+        });
+
+        socket.on("pause_sync", (data) => {
+            if (data.paused) {
+                gameState.fight = false;
+                document.getElementById("ready").style.display = "flex";
+            } else {
+                gameState.fight = true;
+                document.getElementById("ready").style.display = "none";
+                document.getElementById("song").play();
+            }
+        });
+    }
+}
+
+export function updateOnlineHost() {
+    if (!isHost || !connectionAlive || !socket) return;
+    const now = Date.now();
+    if (now - lastSendTime < SEND_INTERVAL) return;
+    lastSendTime = now;
+    stateSeq += 1;
+
+    let winner = null;
+    const p1Name = window.PLAYER_ONE_NAME || narrator_title;
+    const p2Name = window.PLAYER_TWO_NAME || tyler_title;
+    if (player_one.health <= 0) winner = p2Name;
+    else if (player_two.health <= 0) winner = p1Name;
+
+    const state = {
+        seq: stateSeq,
+        t: performance.now(),
+        p1: {
+            x: player_one.position.x,
+            y: player_one.position.y,
+            health: player_one.health,
+            power: player_one.power_c,
+            facing: player_one.facing,
+            sprite: getSpriteName(player_one),
+        },
+        p2: {
+            x: player_two.position.x,
+            y: player_two.position.y,
+            health: player_two.health,
+            power: player_two.power_c,
+            facing: player_two.facing,
+            sprite: getSpriteName(player_two),
+        },
+        fightActive: gameState.fight,
+        gameOver: player_one.health <= 0 || player_two.health <= 0,
+        winner,
+    };
+    socket.emit("game_state", { room: roomId, state });
+
+    if (state.gameOver && document.getElementById("log").style.display !== "flex") {
+        document.querySelector("#log").style.display = "flex";
+        document.querySelector("#log_title").innerHTML = winner + " wins!";
+        if (winner === p1Name) {
+            setMatchResult(p1Name, p2Name);
+        } else {
+            setMatchResult(p2Name, p1Name);
+        }
+        gameState.fight = false;
+        gameState.gameOver = true;
+    }
+}
+
 export function updateOnlineJoiner() {
     if (isHost) return;
-    const now = performance.now();
-    if (!lastTimestamp) lastTimestamp = now;
-    const delta = Math.min(0.033, (now - lastTimestamp) / 1000);
-    lastTimestamp = now;
-    const factor = Math.min(1, delta * 15);
-    player_one.position.x += (receivedState.p1.x - player_one.position.x) * factor;
-    player_one.position.y += (receivedState.p1.y - player_one.position.y) * factor;
-    player_two.position.x += (receivedState.p2.x - player_two.position.x) * factor;
-    player_two.position.y += (receivedState.p2.y - player_two.position.y) * factor;
-    player_one.health = receivedState.p1.health;
-    player_one.power_c = receivedState.p1.power;
-    player_two.health = receivedState.p2.health;
-    player_two.power_c = receivedState.p2.power;
-    // Also update facing from received state (though already done in event handler, this ensures it's updated every frame)
-    player_one.facing = receivedState.p1.facing;
-    player_two.facing = receivedState.p2.facing;
+    sendInputSnapshot(false);
+
+    const latest = snapshotBuffer[snapshotBuffer.length - 1];
+    if (!latest) return;
+
+    const renderTime = latest.t - INTERP_DELAY_MS;
+    const state = sampleBufferedState(renderTime) || latest;
+
+    player_one.position.x = state.p1.x;
+    player_one.position.y = state.p1.y;
+    player_two.position.x = state.p2.x;
+    player_two.position.y = state.p2.y;
+    player_one.health = state.p1.health;
+    player_one.power_c = state.p1.power;
+    player_two.health = state.p2.health;
+    player_two.power_c = state.p2.power;
+    player_one.facing = state.p1.facing;
+    player_two.facing = state.p2.facing;
+
+    // Prevent leftover velocity from fighting network positions.
+    player_one.velocity.x = 0;
+    player_one.velocity.y = 0;
+    player_two.velocity.x = 0;
+    player_two.velocity.y = 0;
 }

@@ -1,239 +1,279 @@
-import { 
-    winnerjs, loserjs, melee_box, combo_box,
-    background_img, city, flat, player_one, player_two,
-    initGameObjects, flat_point, gameState, players_velocity, players_jump
-} from './core.js';
-import { initInput, playerActions, resetJumpFlag, resetActionFlags } from './input.js';
-import { updateAI, setBotReferences } from './bot.js';
-import { initOnline, updateOnlineHost, updateOnlineJoiner } from './online.js';
+import {
+    matchResult,
+    setMatchResult,
+    melee_box,
+    combo_box,
+    background_img,
+    city,
+    flat,
+    player_one,
+    player_two,
+    initGameObjects,
+    flat_point,
+    gameState,
+    players_velocity,
+    players_jump,
+    TICK_MS,
+} from "./core.js";
+import { initInput, playerActions, resetJumpFlag, resetActionFlags } from "./input.js";
+import { updateAI, setBotReferences } from "./bot.js";
+import {
+    initOnline,
+    updateOnlineHost,
+    updateOnlineJoiner,
+    emitPauseSync,
+    emitPauseRequest,
+} from "./online.js";
 
 let gameMode, narrator_title, tyler_title;
 
-document.addEventListener('DOMContentLoaded', () => {
-    gameMode = window.GAME_MODE || 'local';
-    narrator_title = window.PLAYER_ONE_NAME || document.querySelector(".narrator_title").innerHTML;
-    tyler_title = window.PLAYER_TWO_NAME || document.querySelector(".tyler_title").innerHTML;
-    console.log("Game mode from:", gameMode);
+document.addEventListener("DOMContentLoaded", () => {
+    gameMode = window.GAME_MODE || "local";
+    narrator_title =
+        window.PLAYER_ONE_NAME || document.querySelector(".narrator_title").innerHTML;
+    tyler_title =
+        window.PLAYER_TWO_NAME || document.querySelector(".tyler_title").innerHTML;
 
     initGameObjects();
     setBotReferences(player_one, player_two);
 
-    const isHost = (window.PLAYER_ROLE === 'host');
-    // Pass player objects so input.js can access them for jump/attack checks if needed
+    const isHost = window.PLAYER_ROLE === "host";
     initInput(gameMode, isHost, window.PLAYER_ROLE, player_one, player_two);
 
-    const fightButton = document.getElementById('fight');
+    const fightButton = document.getElementById("fight");
     if (fightButton) {
-        fightButton.addEventListener('click', () => {
+        fightButton.addEventListener("click", () => {
             gameState.fight = true;
             gameState.gameOver = false;
-            document.getElementById('ready').style.display = 'none';
-            document.getElementById('song').play();
+            document.getElementById("ready").style.display = "none";
+            document.getElementById("song").play();
         });
     }
 
-    // Global pause handler (space)
-    window.addEventListener('keydown', (e) => {
-        if (e.key !== ' ') return;
+    window.addEventListener("keydown", (e) => {
+        if (e.key !== " ") return;
         e.preventDefault();
-        if (gameMode === 'online') {
-            if (window.PLAYER_ROLE === 'host') {
+        if (gameMode === "online") {
+            if (window.PLAYER_ROLE === "host") {
                 gameState.fight = !gameState.fight;
                 if (!gameState.fight) {
-                    document.getElementById('ready').style.display = 'flex';
-                    if (window.socket) window.socket.emit('pause_sync', { room: window.ROOM_ID, paused: true });
+                    document.getElementById("ready").style.display = "flex";
+                    emitPauseSync(true);
                 } else {
-                    document.getElementById('ready').style.display = 'none';
-                    document.getElementById('song').play();
-                    if (window.socket) window.socket.emit('pause_sync', { room: window.ROOM_ID, paused: false });
+                    document.getElementById("ready").style.display = "none";
+                    document.getElementById("song").play();
+                    emitPauseSync(false);
                 }
+            } else {
+                emitPauseRequest();
             }
-            // Joiner's space handled inside online.js
         } else {
             gameState.fight = !gameState.fight;
-            if (!gameState.fight) document.getElementById('ready').style.display = 'flex';
+            if (!gameState.fight) document.getElementById("ready").style.display = "flex";
             else {
-                document.getElementById('ready').style.display = 'none';
-                document.getElementById('song').play();
+                document.getElementById("ready").style.display = "none";
+                document.getElementById("song").play();
             }
         }
     });
 
-    // Initialize online if needed
-    if (gameMode === 'online') {
+    if (gameMode === "online") {
         initOnline(window.ROOM_ID, window.PLAYER_ROLE, narrator_title, tyler_title);
-        // Hack to expose socket for pause broadcast (will be set by online.js)
     }
 
-    // Helper to apply movement and actions for a player
-    function processPlayer(player, actions, isHuman, playerIndex) {
-        // Reset horizontal velocity (will be set by movement flags)
+    function processPlayer(player, actions, playerIndex) {
         player.velocity.x = 0;
 
-        // Movement
         if (actions.left) {
             player.velocity.x = -players_velocity;
-            player.switch_sprite('return');
+            player.switch_sprite("return");
             player.facing = -1;
         } else if (actions.right) {
             player.velocity.x = players_velocity;
-            player.switch_sprite('run');
+            player.switch_sprite("run");
             player.facing = 1;
-        } else {
-            // Only switch to idle if not in an attack/jump animation that should persist
-            if (!player.melee && !player.combo && player.velocity.y === 0) {
-                player.switch_sprite('idle');
-            }
+        } else if (!player.melee && !player.combo && player.velocity.y === 0) {
+            player.switch_sprite("idle");
         }
 
-        // Jump (one-shot)
         if (actions.jump) {
-            const canvas = document.querySelector('canvas');
+            const canvas = document.querySelector("canvas");
             if (player.position.y + player.height >= canvas.height - flat_point) {
                 player.velocity.y = players_jump;
                 const audio = new Audio();
                 audio.src = "./static/sfx/jump.wav";
                 audio.play();
             }
-            resetJumpFlag(playerIndex === 0 ? 'one' : 'two');
+            resetJumpFlag(playerIndex === 0 ? "one" : "two");
         }
 
-        // Melee
         if (actions.melee) {
             player.attack();
-            resetActionFlags(playerIndex === 0 ? 'one' : 'two');
+            resetActionFlags(playerIndex === 0 ? "one" : "two");
         }
 
-        // Special
         if (actions.special) {
             if (player.power_c >= 100) {
                 if (playerIndex === 0) {
-                    document.getElementById('player_one_combo_bar').style.background = 'red';
-                    document.getElementById('player_one_combo_bar').style.width = '0%';
+                    document.getElementById("player_one_combo_bar").style.background = "red";
+                    document.getElementById("player_one_combo_bar").style.width = "0%";
                 } else {
-                    document.getElementById('player_two_combo_bar').style.background = 'red';
-                    document.getElementById('player_two_combo_bar').style.width = '0%';
+                    document.getElementById("player_two_combo_bar").style.background = "red";
+                    document.getElementById("player_two_combo_bar").style.width = "0%";
                 }
                 player.power();
             }
-            resetActionFlags(playerIndex === 0 ? 'one' : 'two');
+            resetActionFlags(playerIndex === 0 ? "one" : "two");
         }
 
-        // Jump sprite override
-        if (player.velocity.y < 0) player.switch_sprite('jump');
+        if (player.velocity.y < 0) player.switch_sprite("jump");
     }
 
-    // Single animation loop
-    function animate() {
-        requestAnimationFrame(animate);
+    function simulateTick() {
+        if (gameState.fight && !gameState.gameOver) {
+            processPlayer(player_one, playerActions.player_one, 0);
 
-        const isJoinerOnline = (gameMode === 'online' && window.PLAYER_ROLE !== 'host');
-
-        if (!isJoinerOnline) {
-            // --- Host (or local/bot) does full logic ---
-            const canvas = document.querySelector('canvas');
-            const c = canvas.getContext('2d');
-            c.clearRect(0, 0, canvas.width, canvas.height);
-            
-            background_img.update();
-            city.update();
-            city.buildings();
-            flat.update();
-
-            player_one.update();
-            player_two.update();
-
-            // Process player one (always human or AI? In bot mode player one is human)
-            processPlayer(player_one, playerActions.player_one, true, 0);
-
-            // Process player two
-            if (gameMode === 'bot') {
-                // AI sets action flags for player_two, then process normally
+            if (gameMode === "bot") {
                 updateAI();
-                processPlayer(player_two, playerActions.player_two, false, 1);
-            } else if (gameMode === 'online' && window.PLAYER_ROLE === 'host') {
-                // Online host: player_two is remote, actions come via socket
-                processPlayer(player_two, playerActions.player_two, false, 1);
-            } else if (gameMode === 'local') {
-                // Local co-op: both players are human, actions already set by input.js
-                processPlayer(player_two, playerActions.player_two, true, 1);
+                processPlayer(player_two, playerActions.player_two, 1);
+            } else if (gameMode === "online" && window.PLAYER_ROLE === "host") {
+                processPlayer(player_two, playerActions.player_two, 1);
+            } else if (gameMode === "local") {
+                processPlayer(player_two, playerActions.player_two, 1);
+            }
+        } else {
+            player_one.velocity.x = 0;
+            player_two.velocity.x = 0;
+        }
+
+        player_one.stepPhysics();
+        player_two.stepPhysics();
+
+        if (
+            gameState.fight &&
+            !gameState.gameOver &&
+            (gameMode !== "online" || window.PLAYER_ROLE === "host")
+        ) {
+            if (melee_box({ box1: player_one, box2: player_two }) && player_one.melee) {
+                player_two.hit();
+                player_one.melee = false;
+                player_one.meleeTicks = 0;
+                player_one.power_c += 10;
+                document.querySelector("#player_one_combo_bar").style.width =
+                    player_one.power_c + "%";
+                document.querySelector("#player_two_health_bar").style.width =
+                    player_two.health + "%";
+            }
+            if (melee_box({ box1: player_two, box2: player_one }) && player_two.melee) {
+                player_one.hit();
+                player_two.melee = false;
+                player_two.meleeTicks = 0;
+                player_two.power_c += 10;
+                document.querySelector("#player_two_combo_bar").style.width =
+                    player_two.power_c + "%";
+                document.querySelector("#player_one_health_bar").style.width =
+                    player_one.health + "%";
             }
 
-            // --- Combat (only host processes hits) ---
-            if (gameMode !== 'online' || window.PLAYER_ROLE === 'host') {
-                // Melee attacks
-                if (melee_box({box1: player_one, box2: player_two}) && player_one.melee) {
-                    player_two.hit();
-                    player_one.melee = false;
-                    player_one.power_c += 10;
-                    document.querySelector('#player_one_combo_bar').style.width = player_one.power_c + '%';
-                    document.querySelector('#player_two_health_bar').style.width = player_two.health + '%';
-                }
-                if (melee_box({box1: player_two, box2: player_one}) && player_two.melee) {
-                    player_one.hit();
-                    player_two.melee = false;
-                    player_two.power_c += 10;
-                    document.querySelector('#player_two_combo_bar').style.width = player_two.power_c + '%';
-                    document.querySelector('#player_one_health_bar').style.width = player_one.health + '%';
-                }
+            if (combo_box({ box1: player_one, box2: player_two }) && player_one.combo) {
+                player_one.combo = false;
+                player_one.comboTicks = 0;
+                player_two.heavyHit();
+                document.querySelector("#player_two_health_bar").style.width =
+                    player_two.health + "%";
+            }
+            if (combo_box({ box1: player_two, box2: player_one }) && player_two.combo) {
+                player_two.combo = false;
+                player_two.comboTicks = 0;
+                player_one.heavyHit();
+                document.querySelector("#player_one_health_bar").style.width =
+                    player_one.health + "%";
+            }
 
-                // Combo attacks
-                if (combo_box({box1: player_one, box2: player_two}) && player_one.combo) {
-                    player_one.combo = false;
-                    player_two.heavyHit();
-                    document.querySelector('#player_two_health_bar').style.width = player_two.health + '%';
-                }
-                if (combo_box({box1: player_two, box2: player_one}) && player_two.combo) {
-                    player_two.combo = false;
-                    player_one.heavyHit();
-                    document.querySelector('#player_one_health_bar').style.width = player_one.health + '%';
-                }
+            if (player_one.power_c >= 50)
+                document.getElementById("player_one_combo_bar").style.background = "yellow";
+            if (player_one.power_c >= 100)
+                document.getElementById("player_one_combo_bar").style.background = "rgb(0, 255, 0)";
+            if (player_two.power_c >= 50)
+                document.getElementById("player_two_combo_bar").style.background = "yellow";
+            if (player_two.power_c >= 100)
+                document.getElementById("player_two_combo_bar").style.background = "rgb(0, 255, 0)";
 
-                // Update combo bar colors
-                if (player_one.power_c >= 50) document.getElementById('player_one_combo_bar').style.background = 'yellow';
-                if (player_one.power_c >= 100) document.getElementById('player_one_combo_bar').style.background = 'rgb(0, 255, 0)';
-                if (player_two.power_c >= 50) document.getElementById('player_two_combo_bar').style.background = 'yellow';
-                if (player_two.power_c >= 100) document.getElementById('player_two_combo_bar').style.background = 'rgb(0, 255, 0)';
-
-                // Game over
-                if (player_one.health <= 0 || player_two.health <= 0) {
-                    if (!gameState.gameOver) {
-                        gameState.gameOver = true;
-                        gameState.fight = false;
-                        let winner = (player_one.health <= 0) ? tyler_title : narrator_title;
-                        document.querySelector('#log').style.display = 'flex';
-                        document.querySelector('#log_title').innerHTML = winner + ' wins!';
-                        if (winner === narrator_title) {
-                            winnerjs = narrator_title;
-                            loserjs = tyler_title;
-                        } else {
-                            winnerjs = tyler_title;
-                            loserjs = narrator_title;
-                        }
+            if (player_one.health <= 0 || player_two.health <= 0) {
+                if (!gameState.gameOver) {
+                    gameState.gameOver = true;
+                    gameState.fight = false;
+                    const p1Name = window.PLAYER_ONE_NAME || narrator_title;
+                    const p2Name = window.PLAYER_TWO_NAME || tyler_title;
+                    const winner = player_one.health <= 0 ? p2Name : p1Name;
+                    document.querySelector("#log").style.display = "flex";
+                    document.querySelector("#log_title").innerHTML = winner + " wins!";
+                    if (winner === p1Name) {
+                        setMatchResult(p1Name, p2Name);
+                    } else {
+                        setMatchResult(p2Name, p1Name);
                     }
                 }
             }
+        }
 
-            // Online host: send state to joiner
-            if (gameMode === 'online' && window.PLAYER_ROLE === 'host') {
-                updateOnlineHost();
-            }
-        } else {
-            // --- Joiner online: just render interpolated state ---
-            updateOnlineJoiner();
-            const canvas = document.querySelector('canvas');
-            const c = canvas.getContext('2d');
-            c.clearRect(0, 0, canvas.width, canvas.height);
-            background_img.update();
-            city.update();
-            city.buildings();
-            flat.update();
-            player_one.update();
-            player_two.update();
+        if (gameMode === "online" && window.PLAYER_ROLE === "host") {
+            updateOnlineHost();
         }
     }
 
-    animate();
+    function renderFrame() {
+        const canvas = document.querySelector("canvas");
+        const c = canvas.getContext("2d");
+        c.clearRect(0, 0, canvas.width, canvas.height);
+
+        background_img.update();
+        city.update();
+        city.buildings();
+        flat.update();
+
+        const isJoinerOnline = gameMode === "online" && window.PLAYER_ROLE !== "host";
+        if (isJoinerOnline) {
+            player_one.drawFrame();
+            player_two.drawFrame();
+        } else {
+            player_one.draw();
+            player_one.animate_frames();
+            player_one.updateHitboxes();
+            player_two.draw();
+            player_two.animate_frames();
+            player_two.updateHitboxes();
+        }
+    }
+
+    let lastTime = performance.now();
+    let accumulator = 0;
+
+    function animate(now) {
+        requestAnimationFrame(animate);
+
+        const isJoinerOnline = gameMode === "online" && window.PLAYER_ROLE !== "host";
+        const frameMs = Math.min(100, now - lastTime);
+        lastTime = now;
+
+        if (isJoinerOnline) {
+            updateOnlineJoiner();
+            renderFrame();
+            return;
+        }
+
+        accumulator += frameMs;
+        let steps = 0;
+        while (accumulator >= TICK_MS && steps < 5) {
+            simulateTick();
+            accumulator -= TICK_MS;
+            steps += 1;
+        }
+
+        renderFrame();
+    }
+
+    requestAnimationFrame(animate);
 });
 
-export { winnerjs, loserjs };
+export { matchResult };

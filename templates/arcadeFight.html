@@ -90,10 +90,11 @@
           <button id="exit" class="continue" type="submit">OK</button>
         </form>
         <script type="module">
-          import { winnerjs, loserjs } from "./static/arcadeFight.js";
+          import { matchResult } from "./static/arcadeFight.js";
           document.getElementById("exit")?.addEventListener("click", () => {
-            const winner = winnerjs,
-              loser = loserjs;
+            const winner = matchResult.winner;
+            const loser = matchResult.loser;
+            if (!winner || !loser) return;
             fetch("/result", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
