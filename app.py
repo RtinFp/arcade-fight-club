@@ -140,6 +140,34 @@ def delete_room(room_id):
     db.close()
 
 
+def end_match_for_peer(room_id, leaving_sid, reason="disconnect"):
+    """Tell the remaining player the match is over, then drop the room."""
+    room = get_room(room_id)
+    if not room:
+        return
+
+    if room["host_sid"] == leaving_sid:
+        peer_sid = room["joiner_sid"]
+        winner = room["joiner_username"]
+        loser = room["host_username"]
+    elif room["joiner_sid"] == leaving_sid:
+        peer_sid = room["host_sid"]
+        winner = room["host_username"]
+        loser = room["joiner_username"]
+    else:
+        delete_room(room_id)
+        return
+
+    if peer_sid and winner and loser:
+        emit(
+            "opponent_left",
+            {"reason": reason, "winner": winner, "loser": loser},
+            to=peer_sid,
+        )
+
+    delete_room(room_id)
+
+
 def socket_username():
     return session.get("username")
 
@@ -479,6 +507,21 @@ def handle_pause_sync(data):
     emit("pause_sync", data, room=room_id, skip_sid=request.sid)
 
 
+@socketio.on("leave_match")
+def handle_leave_match(data):
+    if not require_socket_user():
+        return
+    room_id = (data or {}).get("room")
+    if not room_id:
+        return
+    room = get_room(room_id)
+    if not room:
+        return
+    if request.sid not in (room["host_sid"], room["joiner_sid"]):
+        return
+    end_match_for_peer(room_id, request.sid, reason="leave")
+
+
 @socketio.on("disconnect")
 def handle_disconnect(reason=None):
     db = sqlite3.connect(DATABASE)
@@ -488,13 +531,7 @@ def handle_disconnect(reason=None):
     ).fetchall()
     db.close()
     for (room_id,) in rows:
-        emit(
-            "opponent_disconnected",
-            {"reason": reason or "disconnect"},
-            room=room_id,
-            skip_sid=request.sid,
-        )
-        delete_room(room_id)
+        end_match_for_peer(room_id, request.sid, reason=reason or "disconnect")
         break
 
 

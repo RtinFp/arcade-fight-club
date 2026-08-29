@@ -13,6 +13,7 @@ let isHost;
 let narrator_title;
 let tyler_title;
 let connectionAlive = true;
+let matchEnded = false;
 let lastSendTime = 0;
 let stateSeq = 0;
 let lastInputSnapshotTime = 0;
@@ -67,14 +68,46 @@ function applyHudNames(hostName, joinerName) {
     }
 }
 
-function showDisconnectMessage(msg) {
+function clearRemoteInputs() {
+    const remote = playerActions.player_two;
+    remote.left = false;
+    remote.right = false;
+    remote.jump = false;
+    remote.melee = false;
+    remote.special = false;
+}
+
+function endMatchFromPeerLeave(data) {
+    if (matchEnded) return;
+    matchEnded = true;
+    connectionAlive = false;
     gameState.fight = false;
     gameState.gameOver = true;
-    connectionAlive = false;
+    clearRemoteInputs();
+
+    const ready = document.getElementById("ready");
+    if (ready) ready.style.display = "none";
+
+    const winner = data && data.winner;
+    const loser = data && data.loser;
     const log = document.querySelector("#log");
     const title = document.querySelector("#log_title");
     if (log) log.style.display = "flex";
-    if (title) title.innerHTML = msg || "Opponent disconnected";
+
+    if (winner && loser) {
+        setMatchResult(winner, loser);
+        if (title) {
+            title.innerHTML = winner + " wins!<br><span style='font-size:0.55em'>opponent left</span>";
+        }
+    } else if (title) {
+        title.innerHTML = "Opponent left";
+    }
+}
+
+function showDisconnectMessage(msg) {
+    endMatchFromPeerLeave(null);
+    const title = document.querySelector("#log_title");
+    if (title && msg) title.innerHTML = msg;
 }
 
 function applyRemoteAction(actionData) {
@@ -251,7 +284,11 @@ export function getRoomId() {
 }
 
 export function isOnlineConnected() {
-    return connectionAlive && !!socket;
+    return connectionAlive && !!socket && !matchEnded;
+}
+
+export function isMatchEnded() {
+    return matchEnded || gameState.gameOver;
 }
 
 export function emitPauseSync(paused) {
@@ -264,12 +301,37 @@ export function emitPauseRequest() {
     socket.emit("pause_request", { room: roomId });
 }
 
+export function leaveMatch(onDone) {
+    if (matchEnded) {
+        if (onDone) onDone();
+        return;
+    }
+    matchEnded = true;
+    gameState.fight = false;
+    gameState.gameOver = true;
+    clearRemoteInputs();
+
+    const finish = () => {
+        connectionAlive = false;
+        if (onDone) onDone();
+    };
+
+    if (socket && roomId && connectionAlive) {
+        socket.emit("leave_match", { room: roomId });
+        // Give the leave packet a moment to flush before unload.
+        setTimeout(finish, 200);
+    } else {
+        finish();
+    }
+}
+
 export function initOnline(room, role, narrator, tyler) {
     roomId = room;
     isHost = role === "host";
     narrator_title = narrator;
     tyler_title = tyler;
     connectionAlive = true;
+    matchEnded = false;
     snapshotBuffer.length = 0;
     stateSeq = 0;
 
@@ -286,6 +348,7 @@ export function initOnline(room, role, narrator, tyler) {
     socket.emit("join_game", { room: roomId, player: role });
 
     socket.on("both_joined", (data) => {
+        if (matchEnded) return;
         if (data) {
             applyHudNames(data.host, data.joiner);
         }
@@ -295,8 +358,12 @@ export function initOnline(room, role, narrator, tyler) {
         document.getElementById("song").play();
     });
 
+    socket.on("opponent_left", (data) => {
+        endMatchFromPeerLeave(data || {});
+    });
+
     socket.on("opponent_disconnected", () => {
-        showDisconnectMessage("Opponent disconnected");
+        endMatchFromPeerLeave({});
     });
 
     if (isHost) {
@@ -305,14 +372,21 @@ export function initOnline(room, role, narrator, tyler) {
         });
 
         socket.on("pause_request", () => {
-            if (gameState.fight && !gameState.gameOver) {
+            if (matchEnded || gameState.gameOver || !connectionAlive) return;
+            if (gameState.fight) {
                 gameState.fight = false;
                 document.getElementById("ready").style.display = "flex";
                 emitPauseSync(true);
+            } else {
+                gameState.fight = true;
+                document.getElementById("ready").style.display = "none";
+                document.getElementById("song").play();
+                emitPauseSync(false);
             }
         });
     } else {
         socket.on("game_state_update", (state) => {
+            if (matchEnded) return;
             pushSnapshot(state);
             applyUiBars(state);
             applyGameOverFromState(state);
@@ -369,7 +443,7 @@ export function initOnline(room, role, narrator, tyler) {
 }
 
 export function updateOnlineHost() {
-    if (!isHost || !connectionAlive || !socket) return;
+    if (!isHost || !connectionAlive || !socket || matchEnded) return;
     const now = Date.now();
     if (now - lastSendTime < SEND_INTERVAL) return;
     lastSendTime = now;
@@ -420,7 +494,7 @@ export function updateOnlineHost() {
 }
 
 export function updateOnlineJoiner() {
-    if (isHost) return;
+    if (isHost || matchEnded) return;
     sendInputSnapshot(false);
 
     const latest = snapshotBuffer[snapshotBuffer.length - 1];

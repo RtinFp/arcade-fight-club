@@ -23,6 +23,9 @@ import {
     updateOnlineJoiner,
     emitPauseSync,
     emitPauseRequest,
+    leaveMatch,
+    isOnlineConnected,
+    isMatchEnded,
 } from "./online.js";
 
 let gameMode, narrator_title, tyler_title;
@@ -40,9 +43,25 @@ document.addEventListener("DOMContentLoaded", () => {
     const isHost = window.PLAYER_ROLE === "host";
     initInput(gameMode, isHost, window.PLAYER_ROLE, player_one, player_two);
 
+    if (gameMode === "online") {
+        initOnline(window.ROOM_ID, window.PLAYER_ROLE, narrator_title, tyler_title);
+    }
+
     const fightButton = document.getElementById("fight");
     if (fightButton) {
         fightButton.addEventListener("click", () => {
+            if (gameMode === "online") {
+                if (!isOnlineConnected() || isMatchEnded()) return;
+                if (window.PLAYER_ROLE === "host") {
+                    gameState.fight = true;
+                    document.getElementById("ready").style.display = "none";
+                    document.getElementById("song").play();
+                    emitPauseSync(false);
+                } else {
+                    emitPauseRequest();
+                }
+                return;
+            }
             gameState.fight = true;
             gameState.gameOver = false;
             document.getElementById("ready").style.display = "none";
@@ -50,10 +69,22 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    const leaveClubForm = document.getElementById("leaveClubForm");
+    if (leaveClubForm) {
+        leaveClubForm.addEventListener("submit", (e) => {
+            if (gameMode !== "online") return;
+            e.preventDefault();
+            leaveMatch(() => {
+                window.location.href = "/";
+            });
+        });
+    }
+
     window.addEventListener("keydown", (e) => {
         if (e.key !== " ") return;
         e.preventDefault();
         if (gameMode === "online") {
+            if (!isOnlineConnected() || isMatchEnded()) return;
             if (window.PLAYER_ROLE === "host") {
                 gameState.fight = !gameState.fight;
                 if (!gameState.fight) {
@@ -77,8 +108,11 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // Browser close / refresh — best-effort; Club uses leaveMatch with a short delay.
     if (gameMode === "online") {
-        initOnline(window.ROOM_ID, window.PLAYER_ROLE, narrator_title, tyler_title);
+        window.addEventListener("pagehide", () => {
+            leaveMatch();
+        });
     }
 
     function processPlayer(player, actions, playerIndex) {
@@ -130,6 +164,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function simulateTick() {
+        if (gameMode === "online" && isMatchEnded()) {
+            return;
+        }
+
         if (gameState.fight && !gameState.gameOver) {
             processPlayer(player_one, playerActions.player_one, 0);
 
