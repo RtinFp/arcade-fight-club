@@ -4,11 +4,22 @@
     box-sizing: border-box;
 }
 
+/* Document must be allowed to grow past one screen, or rankings stay unreachable. */
+html {
+    height: auto;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: scroll;
+}
+
 body {
     background-color: black;
-    height: 100%;
+    color: white;
+    height: auto;
+    min-height: 100%;
     position: relative;
     overflow-x: hidden;
+    overflow-y: visible;
 }
 
 @font-face {
@@ -16,16 +27,18 @@ body {
   src: url('../fonts/SixtyfourConvergence-Regular.ttf');
 }
 
-/* MAIN CONTAINER - use grid to keep title fixed */
+/* Club hero — one viewport, unchanged layout */
 .game-main {
     max-width: 1400px;
     min-width: 832px;
     margin: 0 auto;
     height: 100dvh;
+    max-height: 100dvh;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    position: relative;
 }
 
 .top-container {
@@ -812,4 +825,153 @@ body.modal-open .fixed-buttons {
   background-color: rgb(222, 101, 222);
   border: 3px solid rgb(255, 191, 255);
   border-top: 5px solid purple;
+}
+
+/* Scroll hint under the mode buttons */
+.scroll-hint {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 0 12px rgba(180, 0, 255, 0.35),
+    0 0 28px rgba(0, 200, 255, 0.15);
+  transition: opacity 0.15s linear, transform 0.2s ease, border-color 0.2s ease;
+}
+
+.scroll-hint:hover {
+  border-color: #fff;
+  transform: translateX(-50%) scale(1.06);
+}
+
+.scroll-hint-icon {
+  display: block;
+  animation: hintBounce 1.5s ease-in-out infinite;
+}
+
+@keyframes hintBounce {
+  0%, 100% { transform: translateY(-2px); opacity: 0.7; }
+  50% { transform: translateY(4px); opacity: 1; }
+}
+
+/* Rankings panel (below the club hero — normal document flow) */
+.rankings-screen {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 1.5rem 6rem;
+  position: relative;
+  z-index: 1;
+  opacity: 1;
+  visibility: visible;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.15) 0%,
+    rgba(40, 0, 60, 0.35) 40%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+}
+
+.rankings-inner {
+  width: min(920px, 100%);
+  text-align: center;
+}
+
+.rankings-title {
+  font-family: 'TitleFont', sans-serif;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  color: #fff;
+  text-shadow: 6px 6px 3px black;
+  margin-bottom: 0.35rem;
+}
+
+.rankings-sub {
+  color: rgba(255, 255, 255, 0.55);
+  font-family: 'TitleFont', sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  margin-bottom: 2rem;
+}
+
+.rankings-table-wrap {
+  background: rgba(0, 0, 0, 0.72);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-image: linear-gradient(135deg, #fefefe, #b100ff) 1;
+  overflow: hidden;
+  box-shadow: 0 0 40px rgba(140, 0, 255, 0.18);
+}
+
+.rankings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'TitleFont', sans-serif;
+}
+
+.rankings-table thead th {
+  padding: 1rem 0.75rem;
+  font-size: 0.85rem;
+  color: #ffcc00;
+  border-bottom: 2px solid rgba(255, 204, 0, 0.45);
+  text-shadow: 0 0 10px rgba(255, 204, 0, 0.25);
+}
+
+.rankings-table tbody td {
+  padding: 0.95rem 0.75rem;
+  font-size: 0.8rem;
+  color: #fff;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.rankings-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.rankings-table tbody tr:first-child td {
+  color: #00ff88;
+  text-shadow: 0 0 12px rgba(0, 255, 120, 0.25);
+}
+
+.rankings-empty td {
+  padding: 2.5rem 1rem !important;
+  color: rgba(255, 255, 255, 0.45) !important;
+  text-shadow: none !important;
+}
+
+.scroll-top-btn {
+  margin-top: 2rem;
+  background: rgba(0, 0, 0, 0.75);
+  color: rgba(255, 255, 255, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 4px solid #111;
+  font-family: 'TitleFont', sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  padding: 0.85rem 1.4rem;
+  cursor: pointer;
+}
+
+.scroll-top-btn:hover {
+  color: #fff;
+  border-color: rgba(180, 0, 255, 0.55);
+}
+
+@media (max-width: 900px) {
+  .rankings-table thead th,
+  .rankings-table tbody td {
+    padding: 0.75rem 0.4rem;
+    font-size: 0.65rem;
+  }
 }

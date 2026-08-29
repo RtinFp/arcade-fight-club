@@ -6,6 +6,7 @@ import os
 import re
 import sqlite3
 import json
+import time
 from functools import wraps
 from flask import Flask, redirect, render_template, request, g, session, jsonify
 import uuid
@@ -25,6 +26,9 @@ socketio = SocketIO(
 
 DATABASE = "fightClub.db"
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,20}$")
+# Prevent double-counting when both clients (or OK backup) post the same bout.
+_recent_scores = {}
+_SCORE_DEDUP_SEC = 45
 
 
 def get_db():
@@ -60,21 +64,71 @@ def init_db():
     if "joiner_username" not in cols:
         db.execute("ALTER TABLE rooms ADD COLUMN joiner_username TEXT")
 
+    # Legacy DBs used id PK; newer code used username PK. CREATE IF NOT EXISTS
+    # won't reshape an existing table, so we only seed + patch columns/nulls.
     db.execute(
         """
         CREATE TABLE IF NOT EXISTS players (
-            username TEXT PRIMARY KEY,
-            password TEXT,
-            win INTEGER DEFAULT 0,
-            lose INTEGER DEFAULT 0
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password TEXT DEFAULT '',
+            win INTEGER NOT NULL DEFAULT 0,
+            lose INTEGER NOT NULL DEFAULT 0
         )
         """
     )
+    player_cols = {row[1] for row in db.execute("PRAGMA table_info(players)").fetchall()}
+    if "password" not in player_cols:
+        db.execute("ALTER TABLE players ADD COLUMN password TEXT DEFAULT ''")
+    if "win" not in player_cols:
+        db.execute("ALTER TABLE players ADD COLUMN win INTEGER NOT NULL DEFAULT 0")
+    if "lose" not in player_cols:
+        db.execute("ALTER TABLE players ADD COLUMN lose INTEGER NOT NULL DEFAULT 0")
+
+    db.execute("UPDATE players SET win = 0 WHERE win IS NULL")
+    db.execute("UPDATE players SET lose = 0 WHERE lose IS NULL")
+    db.execute("UPDATE players SET password = '' WHERE password IS NULL")
     db.commit()
     db.close()
 
 
 init_db()
+
+
+def open_db():
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def ensure_player(conn, username):
+    """Make sure a fighter row exists. Returns False for junk display names."""
+    if not username or username in ("Waiting...", "Host", "Opponent"):
+        return False
+    row = conn.execute(
+        "SELECT 1 FROM players WHERE username = ?", (username,)
+    ).fetchone()
+    if row:
+        return True
+    conn.execute(
+        "INSERT INTO players (username, password, win, lose) VALUES (?, '', 0, 0)",
+        (username,),
+    )
+    return True
+
+
+def list_ranked_fighters():
+    conn = open_db()
+    rows = conn.execute(
+        """
+        SELECT id, username, COALESCE(win, 0) AS win, COALESCE(lose, 0) AS lose
+        FROM players
+        WHERE username != 'BOT'
+        ORDER BY win DESC, lose ASC, username ASC
+        """
+    ).fetchall()
+    conn.close()
+    return rows
 
 
 # ---------- Room helpers ----------
@@ -190,24 +244,20 @@ def validate_username(username):
 # ---------- Routes ----------
 @app.route("/", methods=["GET", "POST"])
 def index():
-    connect = sqlite3.connect(DATABASE, check_same_thread=False)
-    c = connect.cursor()
     if request.method == "GET":
-        return render_template("index.html")
+        return render_template("index.html", fighters=list_ranked_fighters())
 
     username1 = request.form.get("username1")
     username2 = request.form.get("username2")
     game_mode = request.form.get("mode")
     if not username1 or not username2:
-        return render_template("index.html")
-    c.execute("SELECT username FROM players")
-    existing = {row[0] for row in c.fetchall()}
-    if username1 not in existing:
-        c.execute("INSERT INTO players (username) VALUES (?)", (username1,))
-    if username2 not in existing:
-        c.execute("INSERT INTO players (username) VALUES (?)", (username2,))
-    connect.commit()
-    connect.close()
+        return render_template("index.html", fighters=list_ranked_fighters())
+
+    conn = open_db()
+    ensure_player(conn, username1)
+    ensure_player(conn, username2)
+    conn.commit()
+    conn.close()
     return render_template(
         "arcadeFight.html",
         player_one_html=username1,
@@ -253,11 +303,11 @@ def auth():
             (username,),
         )
         row = c.fetchone()
-        if not row or not row[1]:
+        if not row:
             db.close()
             return jsonify({"success": False, "message": "Invalid credentials"})
 
-        stored = row[1]
+        stored = row[1] or ""
         if is_password_hashed(stored):
             if not check_password_hash(stored, password):
                 db.close()
@@ -297,14 +347,9 @@ def current_user():
 @app.route("/rank", methods=["GET", "POST"])
 def rank():
     if request.method == "POST":
-        return render_template("index.html")
-    connect = sqlite3.connect(DATABASE, check_same_thread=False)
-    connect.row_factory = sqlite3.Row
-    c = connect.cursor()
-    c.execute("SELECT * FROM players ORDER BY win DESC, lose ASC")
-    fighters = c.fetchall()
-    connect.close()
-    return render_template("rank.html", fighters=fighters)
+        return redirect("/")
+    # Keep a real page as backup; club home also embeds the same list.
+    return render_template("rank.html", fighters=list_ranked_fighters())
 
 
 @app.route("/arcadeFight")
@@ -353,33 +398,48 @@ def result():
     if "username" not in session:
         return jsonify({"success": False, "message": "Not logged in"}), 401
 
-    payload = request.get_json()
+    payload = request.get_json(silent=True)
     if isinstance(payload, str):
         payload = json.loads(payload)
     if not payload:
         return jsonify({"success": False, "message": "Missing result"}), 400
 
-    winner = payload.get("winner")
-    loser = payload.get("loser")
+    winner = (payload.get("winner") or "").strip()
+    loser = (payload.get("loser") or "").strip()
     if not winner or not loser or winner == loser:
+        return jsonify({"success": False, "message": "Invalid result"}), 400
+    if winner in ("Waiting...", "Host", "Opponent") or loser in (
+        "Waiting...",
+        "Host",
+        "Opponent",
+    ):
         return jsonify({"success": False, "message": "Invalid result"}), 400
 
     me = session["username"]
+    # Session user must be in the match (BOT is the only allowed non-account foe).
     if me not in (winner, loser):
         return jsonify({"success": False, "message": "Not a match participant"}), 403
 
-    connect = sqlite3.connect(DATABASE, check_same_thread=False)
-    c = connect.cursor()
-    c.execute("SELECT username FROM players WHERE username IN (?, ?)", (winner, loser))
-    found = {row[0] for row in c.fetchall()}
-    if found != {winner, loser}:
-        connect.close()
-        return jsonify({"success": False, "message": "Unknown players"}), 400
+    key = (winner, loser)
+    now = time.time()
+    last = _recent_scores.get(key)
+    if last is not None and now - last < _SCORE_DEDUP_SEC:
+        return jsonify({"success": True, "deduped": True})
+    _recent_scores[key] = now
 
-    c.execute("UPDATE players SET win = win + 1 WHERE username = ?", (winner,))
-    c.execute("UPDATE players SET lose = lose + 1 WHERE username = ?", (loser,))
-    connect.commit()
-    connect.close()
+    conn = open_db()
+    ensure_player(conn, winner)
+    ensure_player(conn, loser)
+    conn.execute(
+        "UPDATE players SET win = COALESCE(win, 0) + 1 WHERE username = ?",
+        (winner,),
+    )
+    conn.execute(
+        "UPDATE players SET lose = COALESCE(lose, 0) + 1 WHERE username = ?",
+        (loser,),
+    )
+    conn.commit()
+    conn.close()
     return jsonify({"success": True})
 
 

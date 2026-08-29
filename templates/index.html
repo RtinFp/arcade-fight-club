@@ -83,6 +83,31 @@
         </div>
       </div>
 
+      <button
+        type="button"
+        class="scroll-hint"
+        id="scrollHint"
+        aria-label="Scroll to fighters ranking"
+        title="Fighters ranking"
+      >
+        <svg
+          class="scroll-hint-icon"
+          viewBox="0 0 48 48"
+          width="44"
+          height="44"
+          aria-hidden="true"
+        >
+          <path
+            d="M8 16 L24 32 L40 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+
       <!-- GRID – untouched -->
       <div class="grid-container">
         <div class="grid"></div>
@@ -127,6 +152,44 @@
         </div>
       </div>
     </main>
+
+    <section class="rankings-screen" id="rankings">
+      <div class="rankings-inner">
+        <h2 class="rankings-title">FIGHTERS</h2>
+        <p class="rankings-sub">club standings</p>
+        <div class="rankings-table-wrap">
+          <table class="rankings-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Wins</th>
+                <th>Losses</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if fighters and fighters|length > 0 %}
+                {% for fighter in fighters %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>{{ fighter['username'] }}</td>
+                  <td>{{ fighter['win'] }}</td>
+                  <td>{{ fighter['lose'] }}</td>
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr class="rankings-empty">
+                  <td colspan="4">No fights recorded yet</td>
+                </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+        <button type="button" class="scroll-top-btn" id="scrollTopBtn">
+          ▲ back to club
+        </button>
+      </div>
+    </section>
 
     <!-- Background music -->
     <audio id="bgMusic" loop preload="auto">
@@ -247,7 +310,19 @@
       // ---------- UI Helpers ----------
       function showMainMenu() {
         mainMenu.style.display = "flex";
+        mainMenu.style.opacity = "";
+        mainMenu.style.transform = "";
+        mainMenu.style.pointerEvents = "";
         formContainer.style.display = "none";
+        const hint = document.getElementById("scrollHint");
+        hint.style.display = "";
+        hint.style.opacity = "";
+        hint.style.pointerEvents = "";
+        if (typeof updateScrollBlend === "function") updateScrollBlend();
+      }
+
+      function hideScrollHint() {
+        document.getElementById("scrollHint").style.display = "none";
       }
 
       // Start bot game after auth check
@@ -495,6 +570,7 @@
           } else {
             mainMenu.style.display = "none";
             formContainer.style.display = "block";
+            hideScrollHint();
             renderLocalForm();
           }
         } else if (mode === "online") {
@@ -503,6 +579,7 @@
           } else {
             mainMenu.style.display = "none";
             formContainer.style.display = "block";
+            hideScrollHint();
             renderOnlinePanel();
           }
         }
@@ -566,6 +643,59 @@
             .catch(() => {});
         }
       });
+
+      // Fade mode buttons while scrolling into rankings (hero layout stays intact)
+      const rankingsScreen = document.getElementById("rankings");
+      const scrollHint = document.getElementById("scrollHint");
+      const scrollTopBtn = document.getElementById("scrollTopBtn");
+
+      function scrollToRankings() {
+        // offsetTop is reliable even when scroll containers are picky
+        const top = rankingsScreen.offsetTop;
+        window.scrollTo({ top, behavior: "smooth" });
+      }
+
+      function updateScrollBlend() {
+        const max = Math.max(1, window.innerHeight * 0.45);
+        const y = window.scrollY || document.documentElement.scrollTop || 0;
+        const t = Math.min(1, Math.max(0, y / max));
+        const menuVisible = mainMenu.style.display !== "none";
+
+        if (menuVisible) {
+          mainMenu.style.opacity = String(1 - t * 0.85);
+          mainMenu.style.transform = t > 0.02 ? `translateY(${-t * 36}px)` : "";
+          mainMenu.style.pointerEvents = t > 0.7 ? "none" : "";
+        }
+
+        if (scrollHint && scrollHint.style.display !== "none") {
+          scrollHint.style.opacity = String(Math.max(0, 1 - t));
+          scrollHint.style.pointerEvents = t > 0.85 ? "none" : "";
+        }
+      }
+
+      window.addEventListener("scroll", updateScrollBlend, { passive: true });
+      window.addEventListener("resize", updateScrollBlend);
+
+      if (scrollHint) {
+        scrollHint.addEventListener("click", (e) => {
+          e.preventDefault();
+          scrollToRankings();
+        });
+      }
+      if (scrollTopBtn) {
+        scrollTopBtn.addEventListener("click", () => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+      }
+
+      if (window.location.hash === "#rankings") {
+        requestAnimationFrame(() => {
+          scrollToRankings();
+          updateScrollBlend();
+        });
+      } else {
+        updateScrollBlend();
+      }
 
       // Initialization
       checkCurrentUser().then(() => {

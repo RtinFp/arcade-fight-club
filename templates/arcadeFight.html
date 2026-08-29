@@ -76,6 +76,7 @@
       </div>
       <div id="log">
         <form
+          id="exitForm"
           action="/arcadeFight"
           method="post"
           style="
@@ -90,16 +91,15 @@
           <button id="exit" class="continue" type="submit">OK</button>
         </form>
         <script type="module">
-          import { matchResult } from "./static/arcadeFight.js";
-          document.getElementById("exit")?.addEventListener("click", () => {
-            const winner = matchResult.winner;
-            const loser = matchResult.loser;
-            if (!winner || !loser) return;
-            fetch("/result", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ winner, loser }),
-            });
+          import { reportMatchResult, getMatchResult } from "./static/results.js";
+          document.getElementById("exitForm")?.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const { winner, loser } = getMatchResult();
+            // Backup post if the auto-report somehow missed.
+            if (winner && loser) {
+              await reportMatchResult(winner, loser);
+            }
+            window.location.href = "/";
           });
         </script>
       </div>
@@ -107,7 +107,6 @@
     </section>
 
     <script>
-      // پس از بارگذاری کامل DOM، نام بازیکنان را در جای مناسب قرار دهید
       document.querySelector(".narrator_title").innerText =
         window.PLAYER_ONE_NAME;
       document.querySelector(".tyler_title").innerText = window.PLAYER_TWO_NAME;
