@@ -7,6 +7,9 @@ export const MAX_STEPS_PER_FRAME = 5; // avoid spiral-of-death catch-up
 export const ATTACK_ACTIVE_TICKS = 6; // ~100 ms at 60 Hz
 export const HITSTUN_LIGHT_TICKS = 12; // ~200 ms — can't act after a jab
 export const HITSTUN_HEAVY_TICKS = 24; // ~400 ms — combo / heavy connect
+export const MELEE_COOLDOWN_TICKS = 22; // ~367 ms between jabs (stops hold-to-delete)
+export const SPECIAL_COOLDOWN_TICKS = 36; // ~600 ms after a special
+export const JUMP_COOLDOWN_TICKS = 18; // ~300 ms between jumps
 
 export const gravity = 1;
 export const players_velocity = 15;
@@ -135,6 +138,9 @@ export class Sprite extends Background {
         this.combo = false;
         this.comboTicks = 0;
         this.hitstunTicks = 0;
+        this.meleeCooldown = 0;
+        this.specialCooldown = 0;
+        this.jumpCooldown = 0;
         this.frames_current = 0;
         this.frames_elapsed = 0;
         this.frames_hold = 10;
@@ -210,6 +216,9 @@ export class Sprite extends Background {
         if (this.hitstunTicks > 0) {
             this.hitstunTicks--;
         }
+        if (this.meleeCooldown > 0) this.meleeCooldown--;
+        if (this.specialCooldown > 0) this.specialCooldown--;
+        if (this.jumpCooldown > 0) this.jumpCooldown--;
     }
 
     inHitstun() {
@@ -224,6 +233,18 @@ export class Sprite extends Background {
         this.comboTicks = 0;
         this.hitstunTicks = ticks;
         this.velocity.x = 0;
+    }
+
+    canMelee() {
+        return this.meleeCooldown <= 0 && !this.melee && !this.combo;
+    }
+
+    canSpecial() {
+        return this.specialCooldown <= 0 && !this.melee && !this.combo;
+    }
+
+    canJump() {
+        return this.jumpCooldown <= 0;
     }
 
     stepPhysics() {
@@ -250,16 +271,22 @@ export class Sprite extends Background {
     }
 
     attack() {
+        if (!this.canMelee()) return false;
         this.switch_sprite("hit");
         this.melee = true;
         this.meleeTicks = ATTACK_ACTIVE_TICKS;
+        this.meleeCooldown = MELEE_COOLDOWN_TICKS;
+        return true;
     }
 
     power() {
+        if (!this.canSpecial()) return false;
         this.power_c = 0;
         this.switch_sprite("kick");
         this.combo = true;
         this.comboTicks = ATTACK_ACTIVE_TICKS;
+        this.specialCooldown = SPECIAL_COOLDOWN_TICKS;
+        return true;
     }
 
     hit() {

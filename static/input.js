@@ -153,17 +153,15 @@ export function resetJumpFlag(player) {
     }
 }
 
-// Helper to reset melee/special flags after processing
+// Clear the one-shot action flags after the sim consumes them.
+// Leave actionTriggered alone until keyup — otherwise browser key-repeat
+// re-arms melee/special every frame while the key is held.
 export function resetActionFlags(player) {
     if (player === 'one') {
         playerActions.player_one.melee = false;
         playerActions.player_one.special = false;
-        actionTriggered.player_one.melee = false;
-        actionTriggered.player_one.special = false;
     } else {
         playerActions.player_two.melee = false;
         playerActions.player_two.special = false;
-        actionTriggered.player_two.melee = false;
-        actionTriggered.player_two.special = false;
     }
 }

@@ -42,18 +42,30 @@ export function updateAI() {
         playerActions.player_two.right = false;
     }
 
-    // Attack flags (one-shot)
-    if (Math.abs(dx) < attackRange && Math.random() < 0.05) {
+    // Attack flags (one-shot) — cooldown on the sprite still gates spam.
+    if (
+        Math.abs(dx) < attackRange &&
+        player_two.canMelee() &&
+        Math.random() < 0.05
+    ) {
         playerActions.player_two.melee = true;
     }
 
     // Special flag
-    if (player_two.power_c >= 100 && Math.random() < 0.1) {
+    if (
+        player_two.power_c >= 100 &&
+        player_two.canSpecial() &&
+        Math.random() < 0.1
+    ) {
         playerActions.player_two.special = true;
     }
 
     // Jump flag
-    if (Math.random() < 0.01 && player_two.position.y + player_two.height >= canvas.height - flat_point) {
+    if (
+        player_two.canJump() &&
+        Math.random() < 0.01 &&
+        player_two.position.y + player_two.height >= canvas.height - flat_point
+    ) {
         playerActions.player_two.jump = true;
     }
 }

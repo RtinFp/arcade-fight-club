@@ -15,6 +15,7 @@ import {
     TICK_MS,
     MAX_FRAME_MS,
     MAX_STEPS_PER_FRAME,
+    JUMP_COOLDOWN_TICKS,
 } from "./core.js";
 import { reportMatchResult } from "./results.js";
 import { initInput, playerActions, resetJumpFlag, resetActionFlags } from "./input.js";
@@ -144,8 +145,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (actions.jump) {
             const canvas = document.querySelector("canvas");
-            if (player.position.y + player.height >= canvas.height - flat_point) {
+            if (
+                player.canJump() &&
+                player.position.y + player.height >= canvas.height - flat_point
+            ) {
                 player.velocity.y = players_jump;
+                player.jumpCooldown = JUMP_COOLDOWN_TICKS;
                 const audio = new Audio();
                 audio.src = "./static/sfx/jump.wav";
                 audio.play();
@@ -159,7 +164,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (actions.special) {
-            if (player.power_c >= 100) {
+            if (player.power_c >= 100 && player.canSpecial()) {
                 if (playerIndex === 0) {
                     document.getElementById("player_one_combo_bar").style.background = "red";
                     document.getElementById("player_one_combo_bar").style.width = "0%";
