@@ -325,16 +325,15 @@
         document.getElementById("scrollHint").style.display = "none";
       }
 
-      // Start bot game after auth check
+      // Guest bot — no login; casual match, never hits the ranking table.
       function startBotGame() {
-        if (!currentUser) return;
         const form = document.createElement("form");
         form.method = "POST";
         form.action = "/";
         const username1 = document.createElement("input");
         username1.type = "hidden";
         username1.name = "username1";
-        username1.value = currentUser;
+        username1.value = "You";
         const username2 = document.createElement("input");
         username2.type = "hidden";
         username2.name = "username2";
@@ -556,14 +555,10 @@
         cancelBtn.addEventListener("click", cleanup);
       }
 
-      // Mode selection with auth guard
+      // Mode selection — bot is guest-friendly; local/online still need a login.
       function showFormForMode(mode) {
         if (mode === "bot") {
-          if (!currentUser) {
-            showAuthModal(() => startBotGame());
-          } else {
-            startBotGame();
-          }
+          startBotGame();
         } else if (mode === "local") {
           if (!currentUser) {
             showAuthModal(() => showFormForMode("local"));

@@ -13,6 +13,14 @@ export function setBotReferences(p1, p2) {
 export function updateAI() {
     if (!gameState.fight) return;
     if (player_two.health <= 0 || player_one.health <= 0) return;
+    if (player_two.inHitstun()) {
+        playerActions.player_two.left = false;
+        playerActions.player_two.right = false;
+        playerActions.player_two.jump = false;
+        playerActions.player_two.melee = false;
+        playerActions.player_two.special = false;
+        return;
+    }
 
     const canvas = document.querySelector('canvas');
     const dx = player_one.position.x - player_two.position.x;

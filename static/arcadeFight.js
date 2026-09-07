@@ -118,6 +118,16 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function processPlayer(player, actions, playerIndex) {
+        // Hitstun: eat inputs until the get-hit window ends (classic FG / Souls stagger).
+        if (player.inHitstun()) {
+            player.velocity.x = 0;
+            if (actions.jump) resetJumpFlag(playerIndex === 0 ? "one" : "two");
+            if (actions.melee || actions.special) {
+                resetActionFlags(playerIndex === 0 ? "one" : "two");
+            }
+            return;
+        }
+
         player.velocity.x = 0;
 
         if (actions.left) {

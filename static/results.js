@@ -3,7 +3,14 @@ import { setMatchResult, matchResult } from "./core.js";
 let resultSent = false;
 
 function isPlaceholderName(name) {
-    return !name || name === "Waiting..." || name === "Host" || name === "Opponent";
+    return (
+        !name ||
+        name === "Waiting..." ||
+        name === "Host" ||
+        name === "Opponent" ||
+        name === "You" ||
+        name === "BOT"
+    );
 }
 
 // Writes the local matchResult and optionally posts once to /result.

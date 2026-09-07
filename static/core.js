@@ -5,6 +5,8 @@ export const TICK_MS = 1000 / TICK_HZ;
 export const MAX_FRAME_MS = 100; // clamp huge pauses (tab switch, debugger)
 export const MAX_STEPS_PER_FRAME = 5; // avoid spiral-of-death catch-up
 export const ATTACK_ACTIVE_TICKS = 6; // ~100 ms at 60 Hz
+export const HITSTUN_LIGHT_TICKS = 12; // ~200 ms — can't act after a jab
+export const HITSTUN_HEAVY_TICKS = 24; // ~400 ms — combo / heavy connect
 
 export const gravity = 1;
 export const players_velocity = 15;
@@ -132,6 +134,7 @@ export class Sprite extends Background {
         };
         this.combo = false;
         this.comboTicks = 0;
+        this.hitstunTicks = 0;
         this.frames_current = 0;
         this.frames_elapsed = 0;
         this.frames_hold = 10;
@@ -204,6 +207,23 @@ export class Sprite extends Background {
             this.comboTicks--;
             if (this.comboTicks === 0) this.combo = false;
         }
+        if (this.hitstunTicks > 0) {
+            this.hitstunTicks--;
+        }
+    }
+
+    inHitstun() {
+        return this.hitstunTicks > 0;
+    }
+
+    // Getting tagged cancels your own swing so you can't trade out of hitstun.
+    applyHitstun(ticks) {
+        this.melee = false;
+        this.meleeTicks = 0;
+        this.combo = false;
+        this.comboTicks = 0;
+        this.hitstunTicks = ticks;
+        this.velocity.x = 0;
     }
 
     stepPhysics() {
@@ -243,6 +263,7 @@ export class Sprite extends Background {
     }
 
     hit() {
+        this.applyHitstun(HITSTUN_LIGHT_TICKS);
         this.switch_sprite("getHit");
         this.health -= melee_damage;
         const audio = new Audio();
@@ -251,6 +272,7 @@ export class Sprite extends Background {
     }
 
     heavyHit() {
+        this.applyHitstun(HITSTUN_HEAVY_TICKS);
         this.switch_sprite("getHit");
         this.health -= combo_damage;
         const audio = new Audio();
