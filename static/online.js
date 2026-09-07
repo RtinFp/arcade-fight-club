@@ -2,6 +2,7 @@ import {
     player_one,
     player_two,
     gameState,
+    TICK_MS,
 } from "./core.js";
 import { reportMatchResult } from "./results.js";
 import { playerActions } from "./input.js";
@@ -14,14 +15,16 @@ let narrator_title;
 let tyler_title;
 let connectionAlive = true;
 let matchEnded = false;
-let lastSendTime = 0;
 let stateSeq = 0;
 let lastInputSnapshotTime = 0;
 
-const SEND_INTERVAL = 33; // ~30 Hz snapshots
+const SEND_EVERY_TICKS = 1; // 60 Hz snapshots — fighter netcode wants this
 const INPUT_SNAPSHOT_INTERVAL = 100;
-const INTERP_DELAY_MS = 100;
-const MAX_SNAPSHOTS = 8;
+const INTERP_DELAY_MS = 80; // sit this far behind the latest host tick
+const MIN_BUFFER_SNAPSHOTS = 5;
+const MAX_SNAPSHOTS = 24;
+const MAX_EXTRAPOLATE_TICKS = 4;
+const PLAYBACK_CORRECT = 0.1;
 
 const joinerHeld = {
     left: false,
@@ -29,7 +32,10 @@ const joinerHeld = {
 };
 
 const snapshotBuffer = [];
-let lastSprites = { p1: "", p2: "" };
+// Playback time in host sim-ms (seq * TICK_MS), not performance.now().
+let playbackTime = null;
+let bufferReady = false;
+let simTick = 0;
 
 function actionToKey(action) {
     for (const [code, act] of Object.entries(STANDARD_MAPPING)) {
@@ -78,7 +84,12 @@ function clearRemoteInputs() {
 }
 
 function endMatchFromPeerLeave(data) {
-    if (matchEnded) return;
+    // Real KO already happened — don't turn a Club/OK leave into a second trophy.
+    if (matchEnded || gameState.gameOver) {
+        matchEnded = true;
+        connectionAlive = false;
+        return;
+    }
     matchEnded = true;
     connectionAlive = false;
     gameState.fight = false;
@@ -155,10 +166,27 @@ function applyRemoteAction(actionData) {
     }
 }
 
+function packPlayer(player) {
+    return {
+        x: player.position.x,
+        y: player.position.y,
+        vx: player.velocity.x,
+        vy: player.velocity.y,
+        health: player.health,
+        power: player.power_c,
+        facing: player.facing,
+        sprite: getSpriteName(player),
+        frame: player.frames_current,
+    };
+}
+
 function pushSnapshot(state) {
     if (typeof state.seq !== "number") return;
     if (snapshotBuffer.length && state.seq <= snapshotBuffer[snapshotBuffer.length - 1].seq) {
         return;
+    }
+    if (typeof state.t !== "number") {
+        state.t = state.seq * TICK_MS;
     }
     snapshotBuffer.push(state);
     while (snapshotBuffer.length > MAX_SNAPSHOTS) {
@@ -170,13 +198,57 @@ function lerp(a, b, t) {
     return a + (b - a) * t;
 }
 
+function lerpPlayer(older, newer, t, disc) {
+    return {
+        x: lerp(older.x, newer.x, t),
+        y: lerp(older.y, newer.y, t),
+        vx: disc.vx || 0,
+        vy: disc.vy || 0,
+        health: disc.health,
+        power: disc.power,
+        facing: disc.facing,
+        sprite: disc.sprite,
+        frame: disc.frame || 0,
+    };
+}
+
+function extrapolatePlayer(p, ticks) {
+    return {
+        ...p,
+        x: p.x + (p.vx || 0) * ticks,
+        y: p.y + (p.vy || 0) * ticks,
+    };
+}
+
 function sampleBufferedState(renderTime) {
     if (snapshotBuffer.length === 0) return null;
-    if (snapshotBuffer.length === 1) return snapshotBuffer[0];
+    if (snapshotBuffer.length === 1) {
+        const only = snapshotBuffer[0];
+        if (renderTime <= only.t) return only;
+        const ticks = Math.min(MAX_EXTRAPOLATE_TICKS, (renderTime - only.t) / TICK_MS);
+        return {
+            ...only,
+            p1: extrapolatePlayer(only.p1, ticks),
+            p2: extrapolatePlayer(only.p2, ticks),
+        };
+    }
 
-    let older = snapshotBuffer[0];
-    let newer = snapshotBuffer[snapshotBuffer.length - 1];
+    const oldest = snapshotBuffer[0];
+    const newest = snapshotBuffer[snapshotBuffer.length - 1];
 
+    if (renderTime <= oldest.t) return oldest;
+
+    if (renderTime >= newest.t) {
+        const ticks = Math.min(MAX_EXTRAPOLATE_TICKS, (renderTime - newest.t) / TICK_MS);
+        return {
+            ...newest,
+            p1: extrapolatePlayer(newest.p1, ticks),
+            p2: extrapolatePlayer(newest.p2, ticks),
+        };
+    }
+
+    let older = oldest;
+    let newer = newest;
     for (let i = 0; i < snapshotBuffer.length - 1; i++) {
         if (snapshotBuffer[i].t <= renderTime && snapshotBuffer[i + 1].t >= renderTime) {
             older = snapshotBuffer[i];
@@ -185,31 +257,36 @@ function sampleBufferedState(renderTime) {
         }
     }
 
-    if (newer.t === older.t) return newer;
-    const t = Math.max(0, Math.min(1, (renderTime - older.t) / (newer.t - older.t)));
+    const span = newer.t - older.t;
+    if (span <= 0) return newer;
+    const t = (renderTime - older.t) / span;
+    const disc = t < 0.5 ? older : newer;
     return {
-        p1: {
-            x: lerp(older.p1.x, newer.p1.x, t),
-            y: lerp(older.p1.y, newer.p1.y, t),
-            health: newer.p1.health,
-            power: newer.p1.power,
-            facing: newer.p1.facing,
-            sprite: newer.p1.sprite,
-        },
-        p2: {
-            x: lerp(older.p2.x, newer.p2.x, t),
-            y: lerp(older.p2.y, newer.p2.y, t),
-            health: newer.p2.health,
-            power: newer.p2.power,
-            facing: newer.p2.facing,
-            sprite: newer.p2.sprite,
-        },
-        fightActive: newer.fightActive,
-        gameOver: newer.gameOver,
-        winner: newer.winner,
+        p1: lerpPlayer(older.p1, newer.p1, t, disc.p1),
+        p2: lerpPlayer(older.p2, newer.p2, t, disc.p2),
+        fightActive: disc.fightActive,
+        gameOver: disc.gameOver,
+        winner: disc.winner,
         t: renderTime,
         seq: newer.seq,
     };
+}
+
+function applyPose(player, pose) {
+    player.position.x = pose.x;
+    player.position.y = pose.y;
+    player.velocity.x = 0;
+    player.velocity.y = 0;
+    player.health = pose.health;
+    player.power_c = pose.power;
+    player.facing = pose.facing;
+    player.applyRemoteVisual(pose.sprite, pose.frame);
+}
+
+function applyRenderedState(state) {
+    applyPose(player_one, state.p1);
+    applyPose(player_two, state.p2);
+    applyUiBars(state);
 }
 
 function applyUiBars(state) {
@@ -225,36 +302,32 @@ function applyUiBars(state) {
 }
 
 function applyGameOverFromState(state) {
-    gameState.fight = state.fightActive;
-    gameState.gameOver = state.gameOver;
+    if (matchEnded || gameState.gameOver) return;
 
-    if (state.gameOver && document.getElementById("log").style.display !== "flex") {
-        document.querySelector("#log").style.display = "flex";
-        document.querySelector("#log_title").innerHTML = state.winner + " wins!";
-        const p1Name = window.PLAYER_ONE_NAME || narrator_title;
-        const p2Name = window.PLAYER_TWO_NAME || tyler_title;
-        if (state.winner === p1Name) {
-            // Host already posted the score from the sim tick.
-            reportMatchResult(p1Name, p2Name, { record: false });
-        } else {
-            reportMatchResult(p2Name, p1Name, { record: false });
-        }
-    } else if (!state.gameOver) {
-        document.querySelector("#log").style.display = "none";
+    const p1Dead = Number(state.p1 && state.p1.health) <= 0;
+    const p2Dead = Number(state.p2 && state.p2.health) <= 0;
+    if (!state.gameOver || (!p1Dead && !p2Dead)) return;
+    if (typeof state.winner !== "string" || !state.winner) return;
+
+    gameState.fight = false;
+    gameState.gameOver = true;
+
+    document.querySelector("#log").style.display = "flex";
+    document.querySelector("#log_title").innerHTML = state.winner + " wins!";
+    const p1Name = window.PLAYER_ONE_NAME || narrator_title;
+    const p2Name = window.PLAYER_TWO_NAME || tyler_title;
+    if (state.winner === p1Name) {
+        // Host already posted the score from the sim tick.
+        reportMatchResult(p1Name, p2Name, { record: false });
+    } else {
+        reportMatchResult(p2Name, p1Name, { record: false });
     }
 }
 
-function applySprites(state) {
-    if (state.p1.sprite !== lastSprites.p1) {
-        player_one.switch_sprite(state.p1.sprite);
-        lastSprites.p1 = state.p1.sprite;
-    }
-    if (state.p2.sprite !== lastSprites.p2) {
-        player_two.switch_sprite(state.p2.sprite);
-        lastSprites.p2 = state.p2.sprite;
-    }
-    player_one.facing = state.p1.facing;
-    player_two.facing = state.p2.facing;
+function resetJoinerBuffer() {
+    snapshotBuffer.length = 0;
+    playbackTime = null;
+    bufferReady = false;
 }
 
 function emitJoinerAction(action) {
@@ -334,6 +407,9 @@ export function initOnline(room, role, narrator, tyler) {
     connectionAlive = true;
     matchEnded = false;
     snapshotBuffer.length = 0;
+    playbackTime = null;
+    bufferReady = false;
+    simTick = 0;
     stateSeq = 0;
 
     socket = io({ withCredentials: true });
@@ -353,6 +429,8 @@ export function initOnline(room, role, narrator, tyler) {
         if (data) {
             applyHudNames(data.host, data.joiner);
         }
+        // Drop waiting-room snapshots so the joiner doesn't replay 400ms of idle.
+        if (!isHost) resetJoinerBuffer();
         gameState.fight = true;
         gameState.gameOver = false;
         document.getElementById("ready").style.display = "none";
@@ -389,9 +467,6 @@ export function initOnline(room, role, narrator, tyler) {
         socket.on("game_state_update", (state) => {
             if (matchEnded) return;
             pushSnapshot(state);
-            applyUiBars(state);
-            applyGameOverFromState(state);
-            applySprites(state);
         });
 
         window.addEventListener("keydown", (e) => {
@@ -445,10 +520,9 @@ export function initOnline(room, role, narrator, tyler) {
 
 export function updateOnlineHost() {
     if (!isHost || !connectionAlive || !socket || matchEnded) return;
-    const now = Date.now();
-    if (now - lastSendTime < SEND_INTERVAL) return;
-    lastSendTime = now;
-    stateSeq += 1;
+    simTick += 1;
+    if (simTick % SEND_EVERY_TICKS !== 0) return;
+    stateSeq = simTick;
 
     let winner = null;
     const p1Name = window.PLAYER_ONE_NAME || narrator_title;
@@ -458,23 +532,9 @@ export function updateOnlineHost() {
 
     const state = {
         seq: stateSeq,
-        t: performance.now(),
-        p1: {
-            x: player_one.position.x,
-            y: player_one.position.y,
-            health: player_one.health,
-            power: player_one.power_c,
-            facing: player_one.facing,
-            sprite: getSpriteName(player_one),
-        },
-        p2: {
-            x: player_two.position.x,
-            y: player_two.position.y,
-            health: player_two.health,
-            power: player_two.power_c,
-            facing: player_two.facing,
-            sprite: getSpriteName(player_two),
-        },
+        t: simTick * TICK_MS,
+        p1: packPlayer(player_one),
+        p2: packPlayer(player_two),
         fightActive: gameState.fight,
         gameOver: player_one.health <= 0 || player_two.health <= 0,
         winner,
@@ -495,30 +555,47 @@ export function updateOnlineHost() {
     }
 }
 
-export function updateOnlineJoiner() {
+export function updateOnlineJoiner(frameMs = TICK_MS) {
     if (isHost || matchEnded) return;
     sendInputSnapshot(false);
 
-    const latest = snapshotBuffer[snapshotBuffer.length - 1];
-    if (!latest) return;
+    const newest = snapshotBuffer[snapshotBuffer.length - 1];
+    if (!newest) return;
 
-    const renderTime = latest.t - INTERP_DELAY_MS;
-    const state = sampleBufferedState(renderTime) || latest;
+    applyGameOverFromState(newest);
 
-    player_one.position.x = state.p1.x;
-    player_one.position.y = state.p1.y;
-    player_two.position.x = state.p2.x;
-    player_two.position.y = state.p2.y;
-    player_one.health = state.p1.health;
-    player_one.power_c = state.p1.power;
-    player_two.health = state.p2.health;
-    player_two.power_c = state.p2.power;
-    player_one.facing = state.p1.facing;
-    player_two.facing = state.p2.facing;
+    const oldest = snapshotBuffer[0];
+    const span = newest.t - oldest.t;
+    const dt = Math.max(0, Math.min(50, frameMs));
 
-    // Prevent leftover velocity from fighting network positions.
-    player_one.velocity.x = 0;
-    player_one.velocity.y = 0;
-    player_two.velocity.x = 0;
-    player_two.velocity.y = 0;
+    if (frameMs > 80 && bufferReady) {
+        playbackTime = newest.t - INTERP_DELAY_MS;
+    }
+
+    if (!bufferReady) {
+        if (snapshotBuffer.length >= MIN_BUFFER_SNAPSHOTS && span >= INTERP_DELAY_MS) {
+            bufferReady = true;
+            playbackTime = newest.t - INTERP_DELAY_MS;
+            if (playbackTime < oldest.t) playbackTime = oldest.t;
+        } else {
+            applyRenderedState(newest);
+            return;
+        }
+    }
+
+    if (playbackTime == null) {
+        playbackTime = newest.t - INTERP_DELAY_MS;
+    } else {
+        playbackTime += dt;
+        const target = newest.t - INTERP_DELAY_MS;
+        playbackTime += (target - playbackTime) * PLAYBACK_CORRECT;
+    }
+
+    if (playbackTime < oldest.t) playbackTime = oldest.t;
+
+    const maxAhead = TICK_MS * MAX_EXTRAPOLATE_TICKS;
+    if (playbackTime > newest.t + maxAhead) playbackTime = newest.t + maxAhead;
+
+    const state = sampleBufferedState(playbackTime) || newest;
+    applyRenderedState(state);
 }

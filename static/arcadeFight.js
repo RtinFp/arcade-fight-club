@@ -13,6 +13,8 @@ import {
     players_velocity,
     players_jump,
     TICK_MS,
+    MAX_FRAME_MS,
+    MAX_STEPS_PER_FRAME,
 } from "./core.js";
 import { reportMatchResult } from "./results.js";
 import { initInput, playerActions, resetJumpFlag, resetActionFlags } from "./input.js";
@@ -163,6 +165,20 @@ document.addEventListener("DOMContentLoaded", () => {
         if (player.velocity.y < 0) player.switch_sprite("jump");
     }
 
+    // City scroll + sprite sheets — same rate as physics, so 120 Hz monitors don't speed them up.
+    function stepScenery() {
+        background_img.animate_frames();
+        city.animate_frames();
+        city.buildings();
+        flat.animate_frames();
+    }
+
+    function stepPresentation() {
+        stepScenery();
+        player_one.animate_frames();
+        player_two.animate_frames();
+    }
+
     function simulateTick() {
         if (gameMode === "online" && isMatchEnded()) {
             return;
@@ -186,6 +202,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         player_one.stepPhysics();
         player_two.stepPhysics();
+        stepPresentation();
 
         if (
             gameState.fight &&
@@ -265,10 +282,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const c = canvas.getContext("2d");
         c.clearRect(0, 0, canvas.width, canvas.height);
 
-        background_img.update();
-        city.update();
-        city.buildings();
-        flat.update();
+        background_img.draw();
+        city.draw();
+        flat.draw();
 
         const isJoinerOnline = gameMode === "online" && window.PLAYER_ROLE !== "host";
         if (isJoinerOnline) {
@@ -276,36 +292,65 @@ document.addEventListener("DOMContentLoaded", () => {
             player_two.drawFrame();
         } else {
             player_one.draw();
-            player_one.animate_frames();
             player_one.updateHitboxes();
             player_two.draw();
-            player_two.animate_frames();
             player_two.updateHitboxes();
         }
     }
 
+    // Fixed-timestep clock (Gaffer-style accumulator). Paint as fast as the
+    // display likes; sim stays at TICK_HZ so movement doesn't track refresh rate.
     let lastTime = performance.now();
     let accumulator = 0;
+
+    function resetClock(now = performance.now()) {
+        lastTime = now;
+        accumulator = 0;
+    }
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") resetClock();
+    });
 
     function animate(now) {
         requestAnimationFrame(animate);
 
         const isJoinerOnline = gameMode === "online" && window.PLAYER_ROLE !== "host";
-        const frameMs = Math.min(100, now - lastTime);
+        const frameMs = Math.min(MAX_FRAME_MS, Math.max(0, now - lastTime));
         lastTime = now;
 
+        // Joiner is a render client — fighters come from interpolated snapshots.
+        // City still ticks at TICK_HZ; player sheets are host-authored.
         if (isJoinerOnline) {
-            updateOnlineJoiner();
+            updateOnlineJoiner(frameMs);
+
+            accumulator += frameMs;
+            let steps = 0;
+            while (accumulator >= TICK_MS && steps < MAX_STEPS_PER_FRAME) {
+                stepScenery();
+                accumulator -= TICK_MS;
+                steps += 1;
+            }
+            if (steps === MAX_STEPS_PER_FRAME && accumulator >= TICK_MS) {
+                accumulator = 0;
+            }
+
             renderFrame();
             return;
         }
 
         accumulator += frameMs;
+
         let steps = 0;
-        while (accumulator >= TICK_MS && steps < 5) {
+        while (accumulator >= TICK_MS && steps < MAX_STEPS_PER_FRAME) {
             simulateTick();
             accumulator -= TICK_MS;
             steps += 1;
+        }
+
+        // Drop leftover time if we hit the step cap (lag spike); keeps the match playable.
+        if (steps === MAX_STEPS_PER_FRAME && accumulator >= TICK_MS) {
+            accumulator = 0;
         }
 
         renderFrame();

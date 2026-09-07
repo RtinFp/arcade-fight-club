@@ -1,6 +1,9 @@
-// Tuned for a fixed 60 Hz sim step (see arcadeFight.js).
+// Fixed 60 Hz clock — physics, hit windows, and sprite timing all step here.
+// (Variable dt is fine for some games; fighters stay saner on a fixed tick.)
 export const TICK_HZ = 60;
 export const TICK_MS = 1000 / TICK_HZ;
+export const MAX_FRAME_MS = 100; // clamp huge pauses (tab switch, debugger)
+export const MAX_STEPS_PER_FRAME = 5; // avoid spiral-of-death catch-up
 export const ATTACK_ACTIVE_TICKS = 6; // ~100 ms at 60 Hz
 
 export const gravity = 1;
@@ -39,6 +42,12 @@ export const gameState = {
     gameOver: false,
 };
 
+function spriteHold(sprite) {
+    if (sprite === "getHit") return 5;
+    if (sprite === "run" || sprite === "return") return 10;
+    return 25;
+}
+
 export class Background {
     constructor({ position, img, scale = 1, frames_max = 1 }) {
         this.position = position;
@@ -75,9 +84,9 @@ export class Background {
                     : 0;
         }
     }
+    // Draw only — animation advances on the fixed tick, not the paint rate.
     update() {
         this.draw();
-        this.animate_frames();
     }
     buildings() {
         this.position.x += city_speed;
@@ -180,10 +189,9 @@ export class Sprite extends Background {
         this.combo_env.position.y = this.position.y + this.combo_env.offset2.y;
     }
 
-    // Draw + animate only (joiner / remote render path).
+    // Joiner / remote paint path — animation is stepped by the shared clock.
     drawFrame() {
         this.draw();
-        this.animate_frames();
         this.updateHitboxes();
     }
 
@@ -218,7 +226,6 @@ export class Sprite extends Background {
 
     update() {
         this.draw();
-        this.animate_frames();
         this.stepPhysics();
     }
 
@@ -297,13 +304,24 @@ export class Sprite extends Background {
             this.image = cfg.image;
             this.frames_max = cfg.frames_max;
             this.frames_current = 0;
-            this.frames_hold =
-                sprite === "getHit"
-                    ? 5
-                    : sprite === "run" || sprite === "return"
-                      ? 10
-                      : 25;
+            this.frames_hold = spriteHold(sprite);
         }
+    }
+
+    // Joiner path: host is the authority, so skip the local attack lock and
+    // just show whatever sheet + frame the snapshot says.
+    applyRemoteVisual(spriteName, frame) {
+        const cfg = this.sprites[spriteName] || this.sprites.idle;
+        if (!cfg || !cfg.image) return;
+        if (this.image !== cfg.image) {
+            this.image = cfg.image;
+            this.frames_max = cfg.frames_max;
+            this.frames_hold = spriteHold(spriteName);
+            this.frames_elapsed = 0;
+        }
+        const max = Math.max(0, this.frames_max - 1);
+        const f = typeof frame === "number" && isFinite(frame) ? frame : 0;
+        this.frames_current = Math.max(0, Math.min(f, max));
     }
 }
 
