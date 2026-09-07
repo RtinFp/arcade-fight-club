@@ -103,7 +103,7 @@ def open_db():
 
 def ensure_player(conn, username):
     """Make sure a fighter row exists. Returns False for junk display names."""
-    if not username or username in ("Waiting...", "Host", "Opponent"):
+    if not username or username in ("Waiting...", "Host", "Opponent", "You", "BOT"):
         return False
     row = conn.execute(
         "SELECT 1 FROM players WHERE username = ?", (username,)
@@ -123,7 +123,7 @@ def list_ranked_fighters():
         """
         SELECT id, username, COALESCE(win, 0) AS win, COALESCE(lose, 0) AS lose
         FROM players
-        WHERE username != 'BOT'
+        WHERE username NOT IN ('BOT', 'You')
         ORDER BY win DESC, lose ASC, username ASC
         """
     ).fetchall()
@@ -252,6 +252,15 @@ def index():
     game_mode = request.form.get("mode")
     if not username1 or not username2:
         return render_template("index.html", fighters=list_ranked_fighters())
+
+    # Guest AI-bot: display names only — no player rows, no ranking.
+    if game_mode == "bot":
+        return render_template(
+            "arcadeFight.html",
+            player_one_html="You",
+            player_two_html="BOT",
+            game_mode="bot",
+        )
 
     conn = open_db()
     ensure_player(conn, username1)
@@ -408,10 +417,12 @@ def result():
     loser = (payload.get("loser") or "").strip()
     if not winner or not loser or winner == loser:
         return jsonify({"success": False, "message": "Invalid result"}), 400
-    if winner in ("Waiting...", "Host", "Opponent") or loser in (
+    if winner in ("Waiting...", "Host", "Opponent", "You", "BOT") or loser in (
         "Waiting...",
         "Host",
         "Opponent",
+        "You",
+        "BOT",
     ):
         return jsonify({"success": False, "message": "Invalid result"}), 400
 
