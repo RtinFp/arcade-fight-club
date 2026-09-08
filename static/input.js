@@ -10,14 +10,16 @@ export const playerActions = {
         right: false,
         jump: false,
         melee: false,
-        special: false
+        special: false,
+        block: false,
     },
     player_two: {
         left: false,
         right: false,
         jump: false,
         melee: false,
-        special: false
+        special: false,
+        block: false,
     }
 };
 
@@ -103,6 +105,9 @@ export function initInput(gameMode, isHost, playerRole, playerOneObj, playerTwoO
                         playerActionsRef.special = true;
                     }
                     break;
+                case ACTIONS.BLOCK:
+                    playerActionsRef.block = true;
+                    break;
             }
         } 
         else if (type === 'keyup') {
@@ -123,6 +128,9 @@ export function initInput(gameMode, isHost, playerRole, playerOneObj, playerTwoO
                 case ACTIONS.SPECIAL:
                     playerActionsRef.special = false;
                     triggerRef.special = false;
+                    break;
+                case ACTIONS.BLOCK:
+                    playerActionsRef.block = false;
                     break;
             }
         }

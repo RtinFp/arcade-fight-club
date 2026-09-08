@@ -40,6 +40,16 @@ document.addEventListener("DOMContentLoaded", () => {
     tyler_title =
         window.PLAYER_TWO_NAME || document.querySelector(".tyler_title").innerHTML;
 
+    const p1Controls = document.querySelector(".p1_controls");
+    const p2Controls = document.querySelector(".p2_controls");
+    if (gameMode === "local") {
+        if (p1Controls) p1Controls.textContent = "Combo: S · Block: E";
+        if (p2Controls) p2Controls.textContent = "Combo: L · Block: I";
+    } else {
+        if (p1Controls) p1Controls.textContent = "Combo: K · Block: J";
+        if (p2Controls) p2Controls.textContent = "Melee: L · Block: J";
+    }
+
     initGameObjects();
     setBotReferences(player_one, player_two);
 
@@ -122,6 +132,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Hitstun: eat inputs until the get-hit window ends (classic FG / Souls stagger).
         if (player.inHitstun()) {
             player.velocity.x = 0;
+            player.blocking = false;
             if (actions.jump) resetJumpFlag(playerIndex === 0 ? "one" : "two");
             if (actions.melee || actions.special) {
                 resetActionFlags(playerIndex === 0 ? "one" : "two");
@@ -130,8 +141,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         player.velocity.x = 0;
+        // Hold to guard — cancels into idle stance; no swinging while the shield is up.
+        player.blocking = !!actions.block && !player.melee && !player.combo;
 
-        if (actions.left) {
+        if (player.blocking) {
+            // Plant your feet — no walking with the guard up.
+            player.velocity.x = 0;
+        } else if (actions.left) {
             player.velocity.x = -players_velocity;
             player.switch_sprite("return");
             player.facing = -1;
@@ -151,6 +167,7 @@ document.addEventListener("DOMContentLoaded", () => {
             ) {
                 player.velocity.y = players_jump;
                 player.jumpCooldown = JUMP_COOLDOWN_TICKS;
+                player.blocking = false;
                 const audio = new Audio();
                 audio.src = "./static/sfx/jump.wav";
                 audio.play();
@@ -158,12 +175,12 @@ document.addEventListener("DOMContentLoaded", () => {
             resetJumpFlag(playerIndex === 0 ? "one" : "two");
         }
 
-        if (actions.melee) {
+        if (actions.melee && !player.blocking) {
             player.attack();
             resetActionFlags(playerIndex === 0 ? "one" : "two");
         }
 
-        if (actions.special) {
+        if (actions.special && !player.blocking) {
             if (player.power_c >= 100 && player.canSpecial()) {
                 if (playerIndex === 0) {
                     document.getElementById("player_one_combo_bar").style.background = "red";
@@ -175,9 +192,42 @@ document.addEventListener("DOMContentLoaded", () => {
                 player.power();
             }
             resetActionFlags(playerIndex === 0 ? "one" : "two");
+        } else if (actions.special) {
+            resetActionFlags(playerIndex === 0 ? "one" : "two");
         }
 
         if (player.velocity.y < 0) player.switch_sprite("jump");
+    }
+
+    function applyLightConnect(attacker, defender, attackerBarId, defenderHealthId) {
+        const defense = defender.resolveDefense("light");
+        attacker.melee = false;
+        attacker.meleeTicks = 0;
+        if (defense === "dodge") {
+            defender.flashDodge();
+            return;
+        }
+        if (defense === "block") {
+            defender.flashBlock();
+            return;
+        }
+        defender.hit();
+        attacker.power_c += 10;
+        document.querySelector(attackerBarId).style.width = attacker.power_c + "%";
+        document.querySelector(defenderHealthId).style.width = defender.health + "%";
+    }
+
+    function applyHeavyConnect(attacker, defender, defenderHealthId) {
+        const defense = defender.resolveDefense("heavy");
+        attacker.combo = false;
+        attacker.comboTicks = 0;
+        if (defense === "dodge") {
+            defender.flashDodge();
+            return;
+        }
+        // Holding block does nothing against combo — only a timed jump dodge works.
+        defender.heavyHit();
+        document.querySelector(defenderHealthId).style.width = defender.health + "%";
     }
 
     // City scroll + sprite sheets — same rate as physics, so 120 Hz monitors don't speed them up.
@@ -213,6 +263,8 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             player_one.velocity.x = 0;
             player_two.velocity.x = 0;
+            player_one.blocking = false;
+            player_two.blocking = false;
         }
 
         player_one.stepPhysics();
@@ -225,39 +277,27 @@ document.addEventListener("DOMContentLoaded", () => {
             (gameMode !== "online" || window.PLAYER_ROLE === "host")
         ) {
             if (melee_box({ box1: player_one, box2: player_two }) && player_one.melee) {
-                player_two.hit();
-                player_one.melee = false;
-                player_one.meleeTicks = 0;
-                player_one.power_c += 10;
-                document.querySelector("#player_one_combo_bar").style.width =
-                    player_one.power_c + "%";
-                document.querySelector("#player_two_health_bar").style.width =
-                    player_two.health + "%";
+                applyLightConnect(
+                    player_one,
+                    player_two,
+                    "#player_one_combo_bar",
+                    "#player_two_health_bar"
+                );
             }
             if (melee_box({ box1: player_two, box2: player_one }) && player_two.melee) {
-                player_one.hit();
-                player_two.melee = false;
-                player_two.meleeTicks = 0;
-                player_two.power_c += 10;
-                document.querySelector("#player_two_combo_bar").style.width =
-                    player_two.power_c + "%";
-                document.querySelector("#player_one_health_bar").style.width =
-                    player_one.health + "%";
+                applyLightConnect(
+                    player_two,
+                    player_one,
+                    "#player_two_combo_bar",
+                    "#player_one_health_bar"
+                );
             }
 
             if (combo_box({ box1: player_one, box2: player_two }) && player_one.combo) {
-                player_one.combo = false;
-                player_one.comboTicks = 0;
-                player_two.heavyHit();
-                document.querySelector("#player_two_health_bar").style.width =
-                    player_two.health + "%";
+                applyHeavyConnect(player_one, player_two, "#player_two_health_bar");
             }
             if (combo_box({ box1: player_two, box2: player_one }) && player_two.combo) {
-                player_two.combo = false;
-                player_two.comboTicks = 0;
-                player_one.heavyHit();
-                document.querySelector("#player_one_health_bar").style.width =
-                    player_one.health + "%";
+                applyHeavyConnect(player_two, player_one, "#player_one_health_bar");
             }
 
             if (player_one.power_c >= 50)

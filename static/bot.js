@@ -19,12 +19,30 @@ export function updateAI() {
         playerActions.player_two.jump = false;
         playerActions.player_two.melee = false;
         playerActions.player_two.special = false;
+        playerActions.player_two.block = false;
         return;
     }
 
     const canvas = document.querySelector('canvas');
     const dx = player_one.position.x - player_two.position.x;
     const attackRange = 150;
+    const playerOneSwinging = player_one.melee || player_one.combo;
+
+    // Raise guard when the player is swinging nearby — still dies to combo if grounded.
+    if (playerOneSwinging && Math.abs(dx) < attackRange + 40 && !player_two.isAirborne()) {
+        playerActions.player_two.block = true;
+        playerActions.player_two.left = false;
+        playerActions.player_two.right = false;
+        playerActions.player_two.melee = false;
+        playerActions.player_two.special = false;
+        // Timed jump to dodge heavies / when blocking won't help.
+        if (player_one.combo && player_two.canJump() && Math.random() < 0.35) {
+            playerActions.player_two.jump = true;
+            playerActions.player_two.block = false;
+        }
+        return;
+    }
+    playerActions.player_two.block = false;
 
     // Movement flags and facing
     if (Math.abs(dx) > attackRange) {

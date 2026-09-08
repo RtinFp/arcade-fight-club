@@ -29,6 +29,7 @@ const PLAYBACK_CORRECT = 0.1;
 const joinerHeld = {
     left: false,
     right: false,
+    block: false,
 };
 
 const snapshotBuffer = [];
@@ -81,6 +82,7 @@ function clearRemoteInputs() {
     remote.jump = false;
     remote.melee = false;
     remote.special = false;
+    remote.block = false;
 }
 
 function endMatchFromPeerLeave(data) {
@@ -130,6 +132,7 @@ function applyRemoteAction(actionData) {
         const s = actionData.state;
         remote.left = !!s.left;
         remote.right = !!s.right;
+        remote.block = !!s.block;
         return;
     }
 
@@ -153,6 +156,9 @@ function applyRemoteAction(actionData) {
             case ACTIONS.SPECIAL:
                 remote.special = true;
                 break;
+            case ACTIONS.BLOCK:
+                remote.block = true;
+                break;
         }
     } else if (actionData.type === "up") {
         switch (action) {
@@ -161,6 +167,9 @@ function applyRemoteAction(actionData) {
                 break;
             case ACTIONS.RIGHT:
                 remote.right = false;
+                break;
+            case ACTIONS.BLOCK:
+                remote.block = false;
                 break;
         }
     }
@@ -177,6 +186,9 @@ function packPlayer(player) {
         facing: player.facing,
         sprite: getSpriteName(player),
         frame: player.frames_current,
+        blocking: !!player.blocking,
+        blockFlash: player.blockFlashTicks > 0,
+        dodgeFlash: player.dodgeFlashTicks > 0,
     };
 }
 
@@ -209,6 +221,9 @@ function lerpPlayer(older, newer, t, disc) {
         facing: disc.facing,
         sprite: disc.sprite,
         frame: disc.frame || 0,
+        blocking: !!disc.blocking,
+        blockFlash: !!disc.blockFlash,
+        dodgeFlash: !!disc.dodgeFlash,
     };
 }
 
@@ -280,6 +295,9 @@ function applyPose(player, pose) {
     player.health = pose.health;
     player.power_c = pose.power;
     player.facing = pose.facing;
+    player.blocking = !!pose.blocking;
+    player.blockFlashTicks = pose.blockFlash ? 2 : 0;
+    player.dodgeFlashTicks = pose.dodgeFlash ? 2 : 0;
     player.applyRemoteVisual(pose.sprite, pose.frame);
 }
 
@@ -345,6 +363,7 @@ function sendInputSnapshot(force) {
         state: {
             left: joinerHeld.left,
             right: joinerHeld.right,
+            block: joinerHeld.block,
         },
     });
 }
@@ -479,12 +498,17 @@ export function initOnline(room, role, narrator, tyler) {
 
             if (action === ACTIONS.LEFT) joinerHeld.left = true;
             if (action === ACTIONS.RIGHT) joinerHeld.right = true;
+            if (action === ACTIONS.BLOCK) joinerHeld.block = true;
 
             const key = actionToKey(action);
             if (key) {
                 emitJoinerAction({ type: "down", key });
             }
-            if (action === ACTIONS.LEFT || action === ACTIONS.RIGHT) {
+            if (
+                action === ACTIONS.LEFT ||
+                action === ACTIONS.RIGHT ||
+                action === ACTIONS.BLOCK
+            ) {
                 sendInputSnapshot(true);
             }
         });
@@ -497,8 +521,13 @@ export function initOnline(room, role, narrator, tyler) {
 
             if (action === ACTIONS.LEFT) joinerHeld.left = false;
             if (action === ACTIONS.RIGHT) joinerHeld.right = false;
+            if (action === ACTIONS.BLOCK) joinerHeld.block = false;
 
-            if (action === ACTIONS.LEFT || action === ACTIONS.RIGHT) {
+            if (
+                action === ACTIONS.LEFT ||
+                action === ACTIONS.RIGHT ||
+                action === ACTIONS.BLOCK
+            ) {
                 const key = actionToKey(action);
                 if (key) emitJoinerAction({ type: "up", key });
                 sendInputSnapshot(true);

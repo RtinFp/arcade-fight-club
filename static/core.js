@@ -10,6 +10,7 @@ export const HITSTUN_HEAVY_TICKS = 24; // ~400 ms — combo / heavy connect
 export const MELEE_COOLDOWN_TICKS = 22; // ~367 ms between jabs (stops hold-to-delete)
 export const SPECIAL_COOLDOWN_TICKS = 36; // ~600 ms after a special
 export const JUMP_COOLDOWN_TICKS = 18; // ~300 ms between jumps
+export const DEFENSE_FLASH_TICKS = 10; // brief block/dodge feedback
 
 export const gravity = 1;
 export const players_velocity = 15;
@@ -141,6 +142,9 @@ export class Sprite extends Background {
         this.meleeCooldown = 0;
         this.specialCooldown = 0;
         this.jumpCooldown = 0;
+        this.blocking = false;
+        this.blockFlashTicks = 0;
+        this.dodgeFlashTicks = 0;
         this.frames_current = 0;
         this.frames_elapsed = 0;
         this.frames_hold = 10;
@@ -186,6 +190,58 @@ export class Sprite extends Background {
         if (shouldFlip) {
             c.restore();
         }
+
+        // Temp stand-in until a real block sheet exists — cyan shield + flashes.
+        this.drawDefenseFx(c);
+    }
+
+    drawDefenseFx(c) {
+        const cx = this.position.x + this.width / 2;
+        const cy = this.position.y + this.height * 0.45;
+        const forward = this.facing >= 0 ? 1 : -1;
+
+        if (this.blocking) {
+            const sx = cx + forward * (this.width * 0.35);
+            c.save();
+            c.globalAlpha = 0.55;
+            c.fillStyle = "#4fd2ff";
+            c.strokeStyle = "#e8fbff";
+            c.lineWidth = 4;
+            c.beginPath();
+            c.ellipse(sx, cy, 28, 70, 0, 0, Math.PI * 2);
+            c.fill();
+            c.stroke();
+            c.globalAlpha = 0.9;
+            c.fillStyle = "#ffffff";
+            c.font = "bold 22px sans-serif";
+            c.textAlign = "center";
+            c.fillText("BLOCK", cx, this.position.y + 28);
+            c.restore();
+        }
+
+        if (this.blockFlashTicks > 0) {
+            c.save();
+            c.globalAlpha = Math.min(1, this.blockFlashTicks / DEFENSE_FLASH_TICKS);
+            c.strokeStyle = "#7ee0ff";
+            c.lineWidth = 6;
+            c.strokeRect(
+                this.position.x - 8,
+                this.position.y - 8,
+                this.width + 16,
+                this.height + 16
+            );
+            c.restore();
+        }
+
+        if (this.dodgeFlashTicks > 0) {
+            c.save();
+            c.globalAlpha = Math.min(1, this.dodgeFlashTicks / DEFENSE_FLASH_TICKS);
+            c.fillStyle = "#9dff8a";
+            c.font = "bold 26px sans-serif";
+            c.textAlign = "center";
+            c.fillText("DODGE", cx, this.position.y + 28);
+            c.restore();
+        }
     }
 
     updateHitboxes() {
@@ -219,10 +275,33 @@ export class Sprite extends Background {
         if (this.meleeCooldown > 0) this.meleeCooldown--;
         if (this.specialCooldown > 0) this.specialCooldown--;
         if (this.jumpCooldown > 0) this.jumpCooldown--;
+        if (this.blockFlashTicks > 0) this.blockFlashTicks--;
+        if (this.dodgeFlashTicks > 0) this.dodgeFlashTicks--;
     }
 
     inHitstun() {
         return this.hitstunTicks > 0;
+    }
+
+    isAirborne() {
+        const canvas = document.querySelector("canvas");
+        // A few px of slack so "just left the ground" still counts as a dodge window.
+        return this.position.y + this.height < canvas.height - flat_point - 4;
+    }
+
+    // light → hold-block or mid-air dodge. combo → airborne dodge only (block won't save you).
+    resolveDefense(kind) {
+        if (this.isAirborne()) return "dodge";
+        if (kind === "light" && this.blocking) return "block";
+        return null;
+    }
+
+    flashBlock() {
+        this.blockFlashTicks = DEFENSE_FLASH_TICKS;
+    }
+
+    flashDodge() {
+        this.dodgeFlashTicks = DEFENSE_FLASH_TICKS;
     }
 
     // Getting tagged cancels your own swing so you can't trade out of hitstun.
@@ -231,6 +310,7 @@ export class Sprite extends Background {
         this.meleeTicks = 0;
         this.combo = false;
         this.comboTicks = 0;
+        this.blocking = false;
         this.hitstunTicks = ticks;
         this.velocity.x = 0;
     }

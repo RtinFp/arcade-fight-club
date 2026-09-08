@@ -6,7 +6,8 @@ export const ACTIONS = {
     RIGHT: 'right',
     JUMP: 'jump',
     MELEE: 'melee',
-    SPECIAL: 'special'
+    SPECIAL: 'special',
+    BLOCK: 'block',
 };
 
 // Standard mapping (used for online mode & bot mode, for both players)
@@ -15,7 +16,8 @@ export const STANDARD_MAPPING = {
     'KeyD': ACTIONS.RIGHT,
     'KeyW': ACTIONS.JUMP,
     'KeyL': ACTIONS.MELEE,
-    'KeyK': ACTIONS.SPECIAL
+    'KeyK': ACTIONS.SPECIAL,
+    'KeyJ': ACTIONS.BLOCK,
 };
 
 // Local co-op: Player One mapping
@@ -24,7 +26,8 @@ export const LOCAL_P1_MAPPING = {
     'KeyF': ACTIONS.RIGHT,   // F for right (instead of D)
     'KeyW': ACTIONS.JUMP,
     'KeyD': ACTIONS.MELEE,   // D for punch
-    'KeyS': ACTIONS.SPECIAL  // S for combo
+    'KeyS': ACTIONS.SPECIAL, // S for combo
+    'KeyE': ACTIONS.BLOCK,
 };
 
 // Local co-op: Player Two mapping
@@ -33,7 +36,8 @@ export const LOCAL_P2_MAPPING = {
     'Semicolon': ACTIONS.RIGHT,
     'KeyO': ACTIONS.JUMP,
     'KeyK': ACTIONS.MELEE,
-    'KeyL': ACTIONS.SPECIAL
+    'KeyL': ACTIONS.SPECIAL,
+    'KeyI': ACTIONS.BLOCK,
 };
 
 // Helper to get the appropriate mapping for a player in a given mode
