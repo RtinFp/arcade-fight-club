@@ -743,7 +743,7 @@ body.modal-open .fixed-buttons {
 }
 
 #userStatus {
-  position: absolute;
+  position: fixed;
   top: 20px;
   right: 20px;
   color: white;
@@ -751,7 +751,7 @@ body.modal-open .fixed-buttons {
   background: rgba(0, 0, 0, 0.6);
   padding: 6px 12px;
   border-radius: 4px;
-  z-index: 100;
+  z-index: 3000;
 }
 
 .local-card-container {
@@ -828,17 +828,12 @@ body.modal-open .fixed-buttons {
 }
 
 /* Scroll hint under the mode buttons */
-.scroll-hint {
-  position: absolute;
-  bottom: 1.25rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 20;
-  width: 56px;
-  height: 56px;
+.scroll-hint,
+.scroll-top-btn {
+  width: 76px;
+  height: 36px;
   padding: 0;
   border: 2px solid rgba(255, 255, 255, 0.55);
-  border-radius: 999px;
   background: rgba(0, 0, 0, 0.65);
   color: #fff;
   cursor: pointer;
@@ -851,14 +846,28 @@ body.modal-open .fixed-buttons {
   transition: opacity 0.15s linear, transform 0.2s ease, border-color 0.2s ease;
 }
 
+.scroll-hint {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+}
+
 .scroll-hint:hover {
   border-color: #fff;
   transform: translateX(-50%) scale(1.06);
 }
 
-.scroll-hint-icon {
-  display: block;
-  animation: hintBounce 1.5s ease-in-out infinite;
+.scroll-top-btn {
+  position: relative;
+  margin: 2rem auto 0;
+  z-index: 20;
+}
+
+.scroll-top-btn:hover {
+  border-color: #fff;
+  transform: scale(1.06);
 }
 
 @keyframes hintBounce {
@@ -895,15 +904,7 @@ body.modal-open .fixed-buttons {
   font-size: clamp(2rem, 5vw, 3.4rem);
   color: #fff;
   text-shadow: 6px 6px 3px black;
-  margin-bottom: 0.35rem;
-}
-
-.rankings-sub {
-  color: rgba(255, 255, 255, 0.55);
-  font-family: 'TitleFont', sans-serif;
-  font-size: 0.75rem;
-  letter-spacing: 0.18em;
-  margin-bottom: 2rem;
+  margin-bottom: 2.5rem;
 }
 
 .rankings-table-wrap {
@@ -948,24 +949,6 @@ body.modal-open .fixed-buttons {
   padding: 2.5rem 1rem !important;
   color: rgba(255, 255, 255, 0.45) !important;
   text-shadow: none !important;
-}
-
-.scroll-top-btn {
-  margin-top: 2rem;
-  background: rgba(0, 0, 0, 0.75);
-  color: rgba(255, 255, 255, 0.8);
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-bottom: 4px solid #111;
-  font-family: 'TitleFont', sans-serif;
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  padding: 0.85rem 1.4rem;
-  cursor: pointer;
-}
-
-.scroll-top-btn:hover {
-  color: #fff;
-  border-color: rgba(180, 0, 255, 0.55);
 }
 
 @media (max-width: 900px) {
