@@ -20,6 +20,7 @@ import {
 import { reportMatchResult } from "./results.js";
 import { initInput, playerActions, resetJumpFlag, resetActionFlags } from "./input.js";
 import { updateAI, setBotReferences } from "./bot.js";
+import { startLayaStrategy } from "./layaStrategy.js";
 import {
     initOnline,
     updateOnlineHost,
@@ -52,6 +53,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     initGameObjects();
     setBotReferences(player_one, player_two);
+
+    if (gameMode === "bot") {
+        const hud = document.getElementById("bot_strategy_hud");
+        if (hud) hud.style.display = "block";
+        startLayaStrategy(player_one, player_two);
+    }
 
     const isHost = window.PLAYER_ROLE === "host";
     initInput(gameMode, isHost, window.PLAYER_ROLE, player_one, player_two);

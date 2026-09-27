@@ -44,6 +44,30 @@ canvas {
     position: absolute;
     top: 55px;
 }
+#bot_strategy_hud {
+    position: absolute;
+    top: 82px;
+    right: 12px;
+    z-index: 5;
+    padding: 4px 10px;
+    font-family: "PressStart2P", monospace, sans-serif;
+    font-size: 0.65rem;
+    letter-spacing: 0.04em;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.65);
+    border: 2px solid #111;
+    pointer-events: none;
+    text-transform: uppercase;
+}
+#bot_strategy_hud[data-source="laya"] {
+    border-color: #3cf0a0;
+}
+#bot_strategy_hud[data-source="local"] {
+    border-color: #f0c33c;
+}
+#bot_strategy_hud[data-source="classic"] {
+    border-color: #888;
+}
 #player_one_health_container {
     position: relative;
     width: 50%;
